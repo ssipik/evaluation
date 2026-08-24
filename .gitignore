@@ -4,7 +4,10 @@ runs/
 # Generated question sets, one directory per session. Regenerated on demand and
 # reviewed by hand; what survives review is copied into golden_set.yaml, which
 # is the version-controlled artifact.
-data/
 .venv/
 .pytest_cache/
 __pycache__/
+
+# Data directory
+data/
+!data/golden_set.yaml
