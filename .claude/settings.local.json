@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv python *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(.env)",
+      "Read(/home/sipik/Claude/rag-pipeline/evaluation/.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"/home/sipik/Claude/rag-pipeline/evaluation/.claude/deny-env-access.py\"",
+            "statusMessage": "Checking for .env access..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get(\"tool_input\",{}).get(\"file_path\",\"\"))'); case \"$f\" in *.py) uv run isort \"$f\" 2>/dev/null || true;; esac",
+            "timeout": 30,
+            "statusMessage": "Sorting imports with isort..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+[project]
+name = "rag-evaluation"
+version = "0.1.0"
+description = "Evaluation module: golden set, retrieval and judge scoring, parameter sweeps (ARCHITECTURE.md block 12)"
+requires-python = ">=3.13"
+dependencies = [
+    "PyYAML>=6.0",
+    # The query path under test. Tier 1 imports Retriever directly and never
+    # touches the LLM; tier 2 runs the whole agent.
+    "rag-agent",
+    # Parameters and the ingest fingerprint that names a sweep's collection.
+    "rag-config",
+    # The full platform, not mlflow-skinny: this module runs
+    # mlflow.genai.evaluate() and its judge scorers, which skinny does not ship
+    # in a usable form. Production stays on skinny — see agent/pyproject.toml.
+    "mlflow>=3.15",
+    # The judge transport. MLflow dispatches a model URI like
+    # `openrouter:/openai/gpt-5.4` through litellm, and does not depend on it
+    # itself, so an absent litellm shows up as a judge that cannot be reached.
+    "litellm>=1.97",
+    # `generate` reads the ledger to sample documents — the one place this
+    # module touches Postgres. Core + text(), not the stages' table mirrors: it
+    # only ever runs one read-only select.
+    "SQLAlchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    # `generate`'s transport. Direct rather than through rag-agent's build_llm,
+    # because the point is a model from a third family with its own settings —
+    # see generate.py.
+    "openai>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_evaluation"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv]
+# rag-agent is a path dependency, so uv also reads its [tool.uv.sources], which
+# pins rag-config to the bitbucket repo. That URL and the path source below are
+# two different sources for one package, which uv refuses to resolve. A bare
+# override drops the URL from every requirement for rag-config; the path source
+# then decides where it comes from.
+override-dependencies = ["rag-config"]
+
+[tool.uv.sources]
+# Path sources, where the six stages pin git revisions. A stage pins because its
+# Docker build context is one stage directory and cannot reach a sibling; this
+# module is never built into an image, and it already reaches its siblings by
+# path to run them (see stages.py). Editable also means a sweep measures the
+# working tree rather than the last push, which is the point of a dev-time
+# evaluation module.
+rag-config = { path = "../config", editable = true }
+rag-agent = { path = "../agent", editable = true }
