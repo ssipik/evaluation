@@ -1,0 +1,161 @@
+# Golden Q&A set for RAGAS evaluation (ARCHITECTURE.md block 12).
+#
+# The questions below are SEEDED from what is actually in the corpus — every one
+# has matching documents today. The `reference` answers are NOT written: they are
+# the part no tool can produce, because a reference answer invented from the same
+# retrieval the system uses only measures self-consistency.
+#
+# You can run the harness before filling any of them in:
+#   - faithfulness and answer_relevancy need no reference and score immediately
+#   - context_recall and context_precision are skipped per entry until `reference`
+#     is non-empty
+# So fill them in gradually; the harness reports how many of each it could score.
+#
+# Target is ~50-100 entries (block 12). This is a starting scaffold, deliberately
+# spread across every source_system, both languages, and the query shapes that
+# stress different retrieval legs:
+#   - exact identifiers and figures  -> the BM25 legs
+#   - paraphrase and synonym         -> the dense leg
+#   - German compounds               -> the known sparse gap (block 5)
+#
+# Fields:
+#   id         stable slug, so a score can be tracked across runs
+#   question   what gets asked
+#   language   de | en (of the QUESTION; the corpus is mixed and the answer may
+#              legitimately come from a document in the other language)
+#   reference  the correct answer, in your words. Empty = not yet written.
+#              Read by tier 2 (the judge scorers).
+#   relevant_documents
+#              the documents retrieval MUST return for this question, each one a
+#              `source_system` + `url` pair — the url alone does not identify a
+#              document, since two sources can list the same url.
+#              Read by tier 1. Empty = not yet labeled, and the entry is skipped
+#              rather than scored as a miss. Fill these in with `pool`, which
+#              runs the retriever at k=20 across several configurations and
+#              prints what came back — you pick the correct ones from its output
+#              rather than reading the corpus (this is pooling; see
+#              EVALUATION.md). Labels are DOCUMENTS, not chunk ids: chunk ids
+#              regenerate on every re-chunk, and chunk size is the parameter a
+#              sweep most wants to vary.
+#   expect_refusal
+#              true when the correct behaviour is to refuse. Read by tier 3.
+#   tests      free-text note on what this entry is meant to stress
+questions:
+
+  # --- ECB press releases: paraphrase and topical retrieval ------------------
+  - id: digital-euro-pilot-psps
+    question: "How many payment service providers did the ECB select for the digital euro pilot?"
+    language: en
+    reference: ""
+    relevant_documents:
+      - source_system: web_rss
+        url: https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260714~8cd07d9d45.en.html
+    tests: "exact figure in a press release; should be an easy sparse+dense hit"
+
+  - id: digital-euro-warum
+    question: "Warum entwickelt die EZB den digitalen Euro?"
+    language: de
+    reference: ""
+    relevant_documents: []
+    tests: "German question against English source documents — cross-lingual dense retrieval"
+
+  - id: ai-monetary-policy
+    question: "What did Philip Lane say about AI and monetary policy?"
+    language: en
+    reference: ""
+    relevant_documents: []
+    tests: "named speaker + topic; title match should dominate"
+
+  - id: lagarde-interview
+    question: "Was hat Christine Lagarde in ihrem Interview mit Les Échos gesagt?"
+    language: de
+    reference: ""
+    relevant_documents: []
+    tests: "German question, English source, named entity in the title"
+
+  # --- ECB statistical releases: figures and dates ---------------------------
+  - id: bank-interest-rates-june
+    question: "What were the euro area bank interest rates in June 2026?"
+    language: en
+    reference: ""
+    relevant_documents: []
+    tests: "date-qualified figure; two similar documents exist (March and June) — precision test"
+
+  - id: monetary-developments-m3
+    question: "How did M3 develop in the euro area in the most recent month reported?"
+    language: en
+    reference: ""
+    relevant_documents: []
+    tests: "aggregate identifier (M3) — a short exact token the dense leg blurs"
+
+  - id: geldmengenwachstum
+    question: "Wie hat sich das Geldmengenwachstum im Euroraum entwickelt?"
+    language: de
+    reference: ""
+    relevant_documents: []
+    tests: "German compound (Geldmengenwachstum) with no German source document — the deferred compound-splitting gap, block 5"
+
+  # --- Local fund documents: German and English, same ISINs ------------------
+  - id: fondsart-vanguard
+    question: "Um welche Art von Produkt handelt es sich bei dem Vanguard-Teilfonds?"
+    language: de
+    reference: ""
+    relevant_documents: []
+    tests: "German source document, German question — the only combination where the German BM25 leg does real work"
+
+  - id: isin-lookup
+    question: "Welche Informationen gibt es zum Fonds mit der ISIN IE000716YHJ7?"
+    language: de
+    reference: ""
+    relevant_documents:
+      - source_system: local_files
+        url: file:///PRP_DE_de_IE000716YHJ7_YES_2026-06-26.pdf
+      - source_system: local_files
+        url: file:///MR_DE_de_IE000716YHJ7_YES_2026-06-30.pdf
+    tests: "exact identifier lookup — the case block 7 says sparse exists for; dense alone should fail this"
+
+  - id: etf-benchmark-glossary
+    question: "What does 'benchmark' mean in the context of an ETF factsheet?"
+    language: en
+    reference: ""
+    relevant_documents: []
+    tests: "definition lookup inside a glossary section; section_path should reach the citation"
+
+  - id: fund-maturity
+    question: "Does the fund have a fixed maturity date?"
+    language: en
+    reference: ""
+    relevant_documents: []
+    tests: "English question against a German document (Laufzeit) — cross-lingual, no shared token"
+
+  # --- Confluence: internal process pages -----------------------------------
+  - id: create-benchmark
+    question: "How do I create a new benchmark?"
+    language: en
+    reference: ""
+    relevant_documents: []
+    tests: "internal how-to; should retrieve the Confluence page, not an ECB document"
+
+  - id: insert-dividend
+    question: "What are the steps to insert a dividend?"
+    language: en
+    reference: ""
+    relevant_documents: []
+    tests: "internal process page; the corpus has one obvious answer"
+
+  - id: benchmark-aktualisieren
+    question: "Wie aktualisiere ich einen bestehenden Benchmark?"
+    language: de
+    reference: ""
+    relevant_documents: []
+    tests: "German question, English Confluence page — cross-lingual on a small source"
+
+  # --- Negative control ------------------------------------------------------
+  - id: out-of-corpus
+    question: "What is the capital of Australia?"
+    language: en
+    reference: "The knowledge base does not contain this information."
+    # No relevant_documents, and that is the point: nothing should be retrieved. Tier 1
+    # skips it (there is no ranking to score), tier 3 checks the refusal.
+    expect_refusal: true
+    tests: "NOT in the corpus. The agent must say it cannot answer rather than fall back on the model's own knowledge — the failure mode block 8's system prompt exists to prevent. This one has a reference already because the correct behaviour is knowable without the corpus."

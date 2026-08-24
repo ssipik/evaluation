@@ -9,5 +9,5 @@ runs/
 __pycache__/
 
 # Data directory
-data/
+data/*
 !data/golden_set.yaml
