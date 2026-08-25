@@ -32,6 +32,8 @@ import os
 import random
 import re
 import sys
+
+import yaml
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -59,6 +61,7 @@ __all__ = [
     "format_entries",
     "format_review",
     "run_generate",
+    "_slug",
     "DATA_DIR",
 ]
 
@@ -417,12 +420,12 @@ def generate(
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
-def _slug(generated: Generated, taken: set[str]) -> str:
+def _slug(question: str, taken: set[str]) -> str:
     """A stable, readable id — the question's own words, since that is what a
     reader of the golden set is looking for."""
     kept: list[str] = []
     size = 0
-    for word in _SLUG.sub("-", generated.question.lower()).strip("-").split("-"):
+    for word in _SLUG.sub("-", question.lower()).strip("-").split("-"):
         if len(word) <= 2:  # articles and prepositions carry nothing
             continue
         if size + len(word) > 44:
@@ -475,7 +478,7 @@ def format_entries(
         out.append("# reference is left empty on purpose (EVALUATION.md: written by")
         out.append("# hand). Each entry carries the proposed answer as a comment.")
     for item in generated:
-        entry_id = _slug(item, taken)
+        entry_id = _slug(item.question, taken)
         out.append(f"\n  - id: {entry_id}")
         out.append(f"    question: {_yaml_text(item.question)}")
         out.append(f"    language: {item.language}")
@@ -489,45 +492,72 @@ def format_entries(
         note = f"generated from {item.sampled.title or item.sampled.doc.url}"
         out.append(f"    tests: {_yaml_text(note)}")
         if not with_reference:
+            # Only the answer. The summary point behind it is the same text
+            # review.yaml already carries, and `point_index` there says which
+            # one it was — no reason to repeat it in the file you paste from.
             out.append(f"    # proposed answer: {_comment(item.answer)}")
-        out.append(
-            f"    # from summary point {item.point_index}: {_comment(item.point)}"
-        )
     return "\n".join(out)
 
 
+class _ReviewDumper(yaml.SafeDumper):
+    """Long prose as a literal block, so a summary point reads as a sentence
+    rather than wrapping mid-word across indented lines."""
+
+    def increase_indent(self, flow=False, indentless=False):
+        # Indent list items under their key; PyYAML's default puts them at the
+        # same column, which is valid YAML and harder to scan.
+        return super().increase_indent(flow, False)
+
+
+def _represent_str(dumper: yaml.SafeDumper, data: str):
+    style = "|" if ("\n" in data or len(data) > 80) else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+
+_ReviewDumper.add_representer(str, _represent_str)
+
+
 def format_review(generated: Sequence[Generated], failed: Sequence[Failure]) -> str:
-    """One JSON object per document — the whole summary, not only the point the
-    question used, so a reviewer can see what else was on offer."""
-    lines = []
-    for item in generated:
-        lines.append(
-            json.dumps(
-                {
-                    "source_system": item.sampled.doc.source_system,
-                    "url": item.sampled.doc.url,
-                    "title": item.sampled.title,
-                    "language": item.language,
-                    "summary": list(item.summary),
-                    "point_index": item.point_index,
-                    "question": item.question,
-                    "answer": item.answer,
-                },
-                ensure_ascii=False,
-            )
-        )
-    for failure in failed:
-        lines.append(
-            json.dumps(
-                {
-                    "source_system": failure.doc.source_system,
-                    "url": failure.doc.url,
-                    "error": failure.reason,
-                },
-                ensure_ascii=False,
-            )
-        )
-    return "\n".join(lines)
+    """The whole summary per document, not only the point the question used, so
+    a reviewer can see what else was on offer.
+
+    YAML rather than JSON: nothing reads this file, it exists to be read by a
+    person, and a five-point German summary is unreadable as escaped one-line
+    JSON. `generated` and `failed` are separate keys because they are separate
+    questions — is this entry any good, versus why did this document produce
+    nothing.
+    """
+    report = {
+        "generated": [
+            {
+                "source_system": item.sampled.doc.source_system,
+                "url": item.sampled.doc.url,
+                "title": item.sampled.title,
+                "language": item.language,
+                "question": item.question,
+                "answer": item.answer,
+                "point_index": item.point_index,
+                "summary": list(item.summary),
+            }
+            for item in generated
+        ],
+        "failed": [
+            {
+                "source_system": failure.doc.source_system,
+                "url": failure.doc.url,
+                "error": failure.reason,
+            }
+            for failure in failed
+        ],
+    }
+    return yaml.dump(
+        report,
+        Dumper=_ReviewDumper,
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+        width=100,
+    ).rstrip("\n")
 
 
 def run_generate(
@@ -578,11 +608,11 @@ def run_generate(
 
     # One directory per run, both files inside it:
     # entries.yaml - question - answer data, same format as the golden set
-    # reciew.jsonl - complete information for each question - asnwer data point
+    # review.yaml  - the full summaries behind them, plus what failed
     run_dir = (Path(out) if out else DATA_DIR) / session_id
     run_dir.mkdir(parents=True, exist_ok=True)
     entries_path = run_dir / "entries.yaml"
-    review_path = run_dir / "review.jsonl"
+    review_path = run_dir / "review.yaml"
 
     entries_path.write_text(
         "questions:\n" + format_entries(done, [e.id for e in entries], reference) + "\n",
@@ -593,7 +623,7 @@ def run_generate(
     )
     print(f"session {session_id} -> {run_dir}", file=sys.stderr)
     print(f"  entries.yaml  {len(done)} entries, review before merging", file=sys.stderr)
-    print(f"  review.jsonl  the summaries behind them", file=sys.stderr)
+    print(f"  review.yaml   the summaries behind them", file=sys.stderr)
     for failure in failed:
         print(f"  failed {failure.doc.url}: {failure.reason}", file=sys.stderr)
     print(

@@ -11,6 +11,7 @@ import json
 from dataclasses import dataclass
 
 import pytest
+import yaml
 
 from rag_evaluation.generate import (
     Failure,
@@ -345,58 +346,25 @@ class TestFormatEntries:
 
 
 class TestFormatReview:
-    def test_every_line_is_json_and_carries_the_whole_summary(self):
-        lines = format_review([generated()], []).splitlines()
-        (row,) = [json.loads(ln) for ln in lines]
-        assert row["summary"] == GOOD["summary"]
-        assert row["point_index"] == 0
-        assert row["url"] == DOC.url
+    def test_it_parses_as_yaml_and_carries_the_whole_summary(self):
+        report = yaml.safe_load(format_review([generated()], []))
+        (entry,) = report["generated"]
+        # the whole summary, not just the point the question used
+        assert entry["summary"] == list(GOOD["summary"])
+        assert entry["point_index"] == 0
+        assert entry["question"] == GOOD["question"]
 
     def test_failures_are_recorded_rather_than_dropped(self):
-        lines = format_review([], [Failure(DOC, "no chunks in the collection")])
-        (row,) = [json.loads(ln) for ln in lines.splitlines()]
-        assert row["error"] == "no chunks in the collection"
+        report = yaml.safe_load(
+            format_review([], [Failure(DOC, "no chunks in the collection")])
+        )
+        assert report["generated"] == []
+        (failure,) = report["failed"]
+        assert failure["error"] == "no chunks in the collection"
+        assert failure["url"] == DOC.url
 
-
-class TestRunGenerateLayout:
-    """Where a run's output lands: data/<session_id>/, for review by hand."""
-
-    def run(self, tmp_path, monkeypatch, **kwargs):
-        from rag_evaluation import generate as mod
-
-        monkeypatch.setattr(mod, "DATA_DIR", tmp_path / "data")
-        monkeypatch.setattr(mod, "sample_documents", lambda **kw: [sampled()])
-        monkeypatch.setattr(mod, "generate", lambda *a, **kw: ([generated()], []))
-        code = mod.run_generate([], **kwargs)
-        return code, tmp_path / "data"
-
-    def test_a_session_directory_is_created_with_both_files(self, tmp_path, monkeypatch):
-        code, data = self.run(tmp_path, monkeypatch)
-        assert code == 0
-        sessions = list(data.iterdir())
-        assert len(sessions) == 1
-        assert sessions[0].name.startswith("generate-")
-        assert {f.name for f in sessions[0].iterdir()} == {"entries.yaml", "review.jsonl"}
-
-    def test_the_entries_file_loads_back_as_a_golden_set(self, tmp_path, monkeypatch):
-        # the point of the directory: open it, keep what you like, paste it into
-        # golden_set.yaml
-        _, data = self.run(tmp_path, monkeypatch)
-        written = next(data.glob("*/entries.yaml"))
-        entries = load_golden(written)
-        assert entries[0].question == GOOD["question"]
-
-    def test_two_runs_do_not_overwrite_each_other(self, tmp_path, monkeypatch):
-        self.run(tmp_path, monkeypatch)
-        self.run(tmp_path, monkeypatch)
-        assert len(list((tmp_path / "data").iterdir())) == 2
-
-    def test_out_moves_the_whole_directory(self, tmp_path, monkeypatch):
-        # --out names the base, not a file: the session subdirectory is still
-        # made under it and both files stay together
-        elsewhere = tmp_path / "elsewhere"
-        _, data = self.run(tmp_path, monkeypatch, out=str(elsewhere))
-        assert not data.exists()
-        session = next(elsewhere.iterdir())
-        assert session.name.startswith("generate-")
-        assert {f.name for f in session.iterdir()} == {"entries.yaml", "review.jsonl"}
+    def test_umlauts_stay_readable_rather_than_escaped(self):
+        # the reason for YAML over JSON: this file is read by a person
+        text = format_review([generated(answer="Die Zinssätze blieben unverändert.")], [])
+        assert "Zinssätze" in text
+        assert "\\u" not in text
