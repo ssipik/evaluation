@@ -75,7 +75,7 @@ DEFAULT_PG_DSN = "postgresql+psycopg://rag:rag@localhost:5433/rag_ingestion"
 # One subdirectory per session, next to golden_set.yaml because the whole point
 # is reading a run and copying the entries you keep across into it. Nothing here
 # is authoritative — the golden set is; this is a staging area for review.
-DATA_DIR = GOLDEN_PATH.parent / "data"
+DATA_DIR = GOLDEN_PATH.parent
 
 # Overridable with RAG_EVAL_GENERATE_MODEL, the way the judge reads
 # RAG_EVAL_JUDGE_MODEL.
@@ -520,12 +520,6 @@ _ReviewDumper.add_representer(str, _represent_str)
 def format_review(generated: Sequence[Generated], failed: Sequence[Failure]) -> str:
     """The whole summary per document, not only the point the question used, so
     a reviewer can see what else was on offer.
-
-    YAML rather than JSON: nothing reads this file, it exists to be read by a
-    person, and a five-point German summary is unreadable as escaped one-line
-    JSON. `generated` and `failed` are separate keys because they are separate
-    questions — is this entry any good, versus why did this document produce
-    nothing.
     """
     report = {
         "generated": [
@@ -569,10 +563,10 @@ def run_generate(
     max_chars: int = 1_000_000,
     workers: int = 4,
     reference: bool = False,
-    out: str | None = None,
+    data_dir: str | None = None,
     dry_run: bool = False,
 ) -> int:
-    """Sample, generate, write out; returns the exit code.
+    """Sample, generate, write files; returns the exit code.
 
     `entries` is the existing golden set, read only for the ids already taken.
     """
@@ -609,7 +603,7 @@ def run_generate(
     # One directory per run, both files inside it:
     # entries.yaml - question - answer data, same format as the golden set
     # review.yaml  - the full summaries behind them, plus what failed
-    run_dir = (Path(out) if out else DATA_DIR) / session_id
+    run_dir = (Path(data_dir) if data_dir else DATA_DIR) / session_id
     run_dir.mkdir(parents=True, exist_ok=True)
     entries_path = run_dir / "entries.yaml"
     review_path = run_dir / "review.yaml"

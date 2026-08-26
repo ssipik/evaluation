@@ -2709,6 +2709,7 @@ dependencies = [
     { name = "mlflow-skinny" },
     { name = "pandas" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "qdrant-client" },
     { name = "rag-config" },
@@ -2726,6 +2727,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "qdrant-client", specifier = ">=1.12" },
     { name = "rag-config", git = "https://bitbucket.org/get-capital/config.git?rev=main" },
@@ -2756,6 +2758,7 @@ source = { editable = "." }
 dependencies = [
     { name = "litellm" },
     { name = "mlflow" },
+    { name = "numpy" },
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pyyaml" },
@@ -2773,6 +2776,7 @@ dev = [
 requires-dist = [
     { name = "litellm", specifier = ">=1.97" },
     { name = "mlflow", specifier = ">=3.15" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "openai", specifier = ">=2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },

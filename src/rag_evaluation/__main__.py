@@ -4,6 +4,7 @@
     python -m rag_evaluation pool                    labeling helper
     python -m rag_evaluation agent --ids isin-lookup tiers 2 and 3 (needs a key)
     python -m rag_evaluation generate --n 50         seed entries from the corpus
+    python -m rag_evaluation aggregate --session …  multi-document entries from a run
 """
 
 from __future__ import annotations
@@ -56,21 +57,24 @@ def build_parser() -> argparse.ArgumentParser:
     agent.add_argument("--rerank", action="store_true")
 
     gen = sub.add_parser(
-        "generate", help="seed golden entries from sampled documents (needs a key)"
+        "generate", help="generates data points (questions, answers) for the golden set from sampled documents"
     )
     _common(gen)
-    gen.add_argument("--n", type=int, default=50, help="documents to sample")
+    gen.add_argument("--n", type=int, default=50, help="number of documents to sample")
     gen.add_argument(
-        "--seed", type=int, help="draw seed; same seed + same corpus = same sample"
+        "--seed", type=int, help="random generator seed used to sample documents"
     )
-    gen.add_argument("--model", help=f"writer model (default {GENERATE_MODEL})")
+    gen.add_argument(
+        "--model",
+        help=f"model that analyses the samples documents and generates the (answer, question) data points (default {GENERATE_MODEL})",
+    )
     gen.add_argument("--dsn", help="Postgres DSN (default RAG_PG_DSN)")
     gen.add_argument(
-        "--max-chars", type=int, default=1_000_000, help="document text sent per call"
+        "--max-chars", type=int, default=1_000_000, help="maximum document size per LLM call"
     )
-    gen.add_argument("--workers", type=int, default=4, help="concurrent calls")
+    gen.add_argument("--workers", type=int, default=4, help="number of concurrent LLM calls")
     gen.add_argument(
-        "--out", help="base directory for the run (default data/); a session subdirectory is made under it"
+        "--data-dir", help="base directory for the run (default data/); a session subdirectory is made under it"
     )
     gen.add_argument(
         "--reference",
@@ -81,6 +85,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="print the sampled documents and stop, before any LLM call",
+    )
+
+    agg = sub.add_parser(
+        "aggregate",
+        help="generates (question, answer) data points for the golden set based on information retrieved from multiple documents",
+    )
+    _common(agg)
+    agg.add_argument(
+        "--session-id",
+        required=True,
+        help="session id of a previouls `generate` run; data is usually found at data/generate-<session>",
+    )
+    agg.add_argument(
+        "--threshold",
+        type=float,
+        default=0.90,
+        help="lower threshold for the similarity (cosine) of a pair to be considered a match (default 0.90)",
+    )
+    agg.add_argument(
+        "--max-documents",
+        type=int,
+        default=5,
+        help="clusters wider than this are boilerplate, not facts",
+    )
+    agg.add_argument("--model", help=f"writer model (default {GENERATE_MODEL})")
+    agg.add_argument(
+        "--data-dir", help="base directory for the run (default data/); a session subdirectory should exist under it"
+    )
+    agg.add_argument(
+        "--dry-run", action="store_true", help="print the clusters, call nothing"
     )
 
     sweep = sub.add_parser("sweep", help="the tuning loop over a sweep file")
@@ -153,7 +187,20 @@ def main(argv: list[str] | None = None) -> int:
             max_chars=args.max_chars,
             workers=args.workers,
             reference=args.reference,
-            out=args.out,
+            data_dir=args.data_dir,
+            dry_run=args.dry_run,
+        )
+
+    if args.command == "aggregate":
+        from rag_evaluation.aggregate import run_aggregate
+
+        return run_aggregate(
+            args.session_id,
+            existing_ids=[e.id for e in entries],
+            threshold=args.threshold,
+            max_documents=args.max_documents,
+            model=args.model,
+            data_dir=args.data_dir,
             dry_run=args.dry_run,
         )
 

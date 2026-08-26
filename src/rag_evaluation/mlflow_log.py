@@ -278,7 +278,7 @@ def generation_run(
     params: dict[str, object],
     session_id: str | None = None,
     experiment: str = DATASET_EXPERIMENT,
-    prompt_name: str = "evaluation_dataset_prompt",
+    prompt_name: str = "evaluation_generate_prompt",
 ) -> Iterator[dict[str, float]]:
     """One run around a whole `generate` pass, with every model call traced.
 

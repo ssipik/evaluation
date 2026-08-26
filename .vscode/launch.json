@@ -13,7 +13,19 @@
             "args": [
                 "generate",
                 "--n", "50",
-                "--workers", "4"
+                "--workers", "4",
+                // "--seed", "42",
+            ],
+        },
+        {
+            "name": "rag_evaluation - aggregate",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "rag_evaluation",
+            "args": [
+                "aggregate",
+                // "--session-id", "generate-20260821-192458-e4bdc8",
+                "--session-id", "generate-20260825-184221-e18b2b",
             ],
         },
         {
