@@ -10,6 +10,9 @@
             "type": "debugpy",
             "request": "launch",
             "module": "rag_evaluation",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
             "args": [
                 "generate",
                 "--n", "50",
@@ -22,10 +25,25 @@
             "type": "debugpy",
             "request": "launch",
             "module": "rag_evaluation",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
             "args": [
                 "aggregate",
-                // "--session-id", "generate-20260821-192458-e4bdc8",
-                "--session-id", "generate-20260825-184221-e18b2b",
+                "--session-id", "generate-20260831-140203-b505ce",
+            ],
+        },
+        {
+            "name": "rag_evaluation - pool",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "rag_evaluation",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "args": [
+                "pool",
+                "--session-id", "generate-20260831-140203-b505ce",
             ],
         },
         {

@@ -27,6 +27,11 @@ dependencies = [
     # because the point is a model from a third family with its own settings —
     # see generate.py.
     "openai>=2.0",
+    # `aggregate` compares every summary point with every other, which is one
+    # matrix product rather than 48k Python calls — see _similarity_matrix.
+    # Arrives transitively through mlflow and llama-index anyway; declared
+    # because this module imports it directly.
+    "numpy>=2.0",
 ]
 
 [project.optional-dependencies]

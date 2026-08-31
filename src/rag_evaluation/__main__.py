@@ -1,7 +1,7 @@
 """Argparse only — the logic lives in the library modules.
 
     python -m rag_evaluation retrieval --k 10        tier 1, no LLM
-    python -m rag_evaluation pool                    labeling helper
+    python -m rag_evaluation pool --session-id …     labeling helper
     python -m rag_evaluation agent --ids isin-lookup tiers 2 and 3 (needs a key)
     python -m rag_evaluation generate --n 50         seed entries from the corpus
     python -m rag_evaluation aggregate --session …  multi-document entries from a run
@@ -42,20 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-mlflow", action="store_true", help="print only, log nothing"
     )
 
-    pool = sub.add_parser("pool", help="pooled candidates to label by hand")
-    _common(pool)
-    pool.add_argument("--k", type=int, default=20, help="depth per contributing run")
-    pool.add_argument(
-        "--with-rerank",
-        action="store_true",
-        help="add a reranked run to the pool — more diverse, ~222 s per query here",
-    )
-
     agent = sub.add_parser("agent", help="tiers 2 and 3: judge scorers")
     _common(agent)
     agent.add_argument("--judge-model", help="scoring model; must not be the agent's")
     agent.add_argument("--rerank", action="store_true")
 
+    # generate command and its arguments
     gen = sub.add_parser(
         "generate", help="generates data points (questions, answers) for the golden set from sampled documents"
     )
@@ -87,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="print the sampled documents and stop, before any LLM call",
     )
 
+    # aggregate command and its arguments
     agg = sub.add_parser(
         "aggregate",
         help="generates (question, answer) data points for the golden set based on information retrieved from multiple documents",
@@ -116,6 +109,32 @@ def build_parser() -> argparse.ArgumentParser:
     agg.add_argument(
         "--dry-run", action="store_true", help="print the clusters, call nothing"
     )
+    
+    # pool command and its arguments
+    pool = sub.add_parser(
+        "pool",
+        help="retrieves candidate documents for a session's questions",
+    )
+    pool.add_argument(
+        "--session-id",
+        required=True,
+        help="session id of a previouls `generate` run; data is usually found at data/generate-<session>",
+    )
+    pool.add_argument(
+        "--ids",
+        nargs="*",
+        help="only these entry ids from the session files (default: every question in them)",
+    )
+    pool.add_argument(
+        "--k",
+        type=int,
+        default=20,
+        help="maximum chunks retrieved per question; they are deduplicated to documents, so the pool holds at most k per question and usually fewer. Capped by the retriever's top_k (30), above which nothing more comes back (default 20)",
+    )
+    pool.add_argument(
+        "--data-dir",
+        help="base directory holding the session directories (default data/); the --session-id subdirectory must exist under it",
+    )
 
     sweep = sub.add_parser("sweep", help="the tuning loop over a sweep file")
     _common(sweep)
@@ -135,45 +154,22 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = build_parser().parse_args(argv)
+    
+    if args.command == "pool":
+        from rag_evaluation.pool import run_pool
+
+        return run_pool(
+            args.session_id,
+            ids=args.ids,
+            k=args.k,
+            data_dir=args.data_dir,
+        )
 
     try:
         entries = load_golden(args.golden, args.ids)
     except GoldenSetError as exc:
         print(f"golden set: {exc}", file=sys.stderr)
         return 2
-
-    if args.command == "retrieval":
-        from rag_evaluation.mlflow_log import log_tier1
-        from rag_evaluation.retrieval_eval import format_report, run_tier1
-
-        settings = get_settings()
-        if args.rerank:
-            settings = replace(settings, rerank_enabled=True)
-        report = run_tier1(entries, settings=settings, k=args.k)
-        print(format_report(report))
-        if not args.no_mlflow:
-            log_tier1(report, settings, golden_path=args.golden)
-        return 0
-
-    if args.command == "pool":
-        from rag_evaluation.pool import (
-            DEFAULT_RUNS,
-            RERANKED_RUN,
-            format_pool,
-            pool_entries,
-        )
-
-        configured = DEFAULT_RUNS + ((RERANKED_RUN,) if args.with_rerank else ())
-        runs = tuple(replace(r, k=args.k) for r in configured)
-        print(format_pool(entries, pool_entries(entries, runs)))
-        return 0
-
-    if args.command == "agent":
-        from rag_evaluation.agent_eval import run_judges
-
-        return run_judges(
-            entries, judge_model=args.judge_model, rerank=args.rerank
-        )
 
     if args.command == "generate":
         from rag_evaluation.generate import run_generate
@@ -202,6 +198,26 @@ def main(argv: list[str] | None = None) -> int:
             model=args.model,
             data_dir=args.data_dir,
             dry_run=args.dry_run,
+        )
+
+    if args.command == "retrieval":
+        from rag_evaluation.mlflow_log import log_tier1
+        from rag_evaluation.retrieval_eval import format_report, run_tier1
+
+        settings = get_settings()
+        if args.rerank:
+            settings = replace(settings, rerank_enabled=True)
+        report = run_tier1(entries, settings=settings, k=args.k)
+        print(format_report(report))
+        if not args.no_mlflow:
+            log_tier1(report, settings, golden_path=args.golden)
+        return 0
+
+    if args.command == "agent":
+        from rag_evaluation.agent_eval import run_judges
+
+        return run_judges(
+            entries, judge_model=args.judge_model, rerank=args.rerank
         )
 
     if args.command == "sweep":

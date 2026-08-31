@@ -12,6 +12,109 @@ package under a new `version:`.
 uv sync --extra dev
 ```
 
+## Building the golden set
+
+Three commands, run in this order, and each one needs a human pass afterwards.
+They fill different gaps, so none of them replaces another:
+
+| command | writes | what a human does |
+|---|---|---|
+| `generate` | a question per sampled document, one labeled document each | judge whether the question is fair |
+| `aggregate` | a question per group of documents saying the same thing at different times | judge whether the question really needs all of them |
+| `pool` | candidate documents for questions that already exist | judge each candidate relevant or not |
+
+`generate` and `aggregate` write questions and label only the documents they were
+written from. `pool` writes no questions — it labels the *other* documents that
+answer them. Without it, a document no sample happened to cover stays unlabeled,
+and `metrics.score_query` counts it as a miss when retrieval finds it, which
+scores the better configurations worse.
+
+Nothing any of them writes is authoritative. Each run leaves its files in
+`data/<session-id>/`; you review them there and paste what you keep into
+`golden_set.yaml`.
+
+### Seeding questions — `generate`
+
+Needs `../qdrant` up, `../postgres` up, and `OPENROUTER_API_KEY`. Samples
+documents from the ledger and asks Gemini for a summary plus one question the
+summary answers.
+
+```bash
+.venv/bin/python -m rag_evaluation generate --n 50 --seed 7 --dry-run   # the sample only
+.venv/bin/python -m rag_evaluation generate --n 50 --seed 7
+```
+
+The question is written *from* one document, so that document is relevant by
+construction and needs no labeling — `pool` below is what finds the others. What needs a human is the
+question — that it stands on its own, and that it names enough to pick this
+document out of a corpus of similar ones. Each run writes
+`data/<session_id>/entries.yaml` (the entries) and `review.yaml` (the full
+summaries and the failures) — the same session id its MLflow traces carry.
+Review `entries.yaml`, delete the weak entries, paste the rest into
+`golden_set.yaml`. `--data-dir` moves the base directory; the session subdirectory is
+always made under it.
+
+`reference` comes out empty on purpose; the proposed answer sits in a comment
+under each entry (`--reference` puts it in the field instead). EVALUATION.md's
+rule is that references are written by hand — a machine-written one turns tier 2
+into a test of two models agreeing.
+
+The writer model is a third family, `google/gemini-3.7-flash`, so it is neither
+the agent's (Claude) nor the judge's (GPT). `--model` or
+`RAG_EVAL_GENERATE_MODEL` override it.
+
+### Multi-document questions — `aggregate`
+
+Needs `../tei` up and `OPENROUTER_API_KEY`. Reads a `generate` run's summary
+points, finds the same measure stated across several documents, and writes one
+question that needs all of them.
+
+```bash
+.venv/bin/python -m rag_evaluation aggregate \
+    --session-id generate-20260821-192458-e4bdc8 --dry-run   # the clusters only
+.venv/bin/python -m rag_evaluation aggregate \
+    --session-id generate-20260821-192458-e4bdc8
+```
+
+Writes `aggregate.yaml` (entries) and `aggregate-review.yaml` (the clusters
+behind them) into the same session directory.
+
+`generate` labels exactly one document per question, so nothing it writes tests
+whether retrieval returns a *set*. This closes that: four monthly ECB releases
+stating M3 growth become one question about the whole period, and recall becomes
+graded instead of binary.
+
+Three filters decide what is worth asking about, each for a failure seen on the
+real corpus:
+
+| filter | default | what it rejects |
+|---|---|---|
+| cosine floor | `--threshold 0.90` | statements that merely share a sentence shape |
+| documents per cluster | `--max-documents 5` | templates repeated across the corpus |
+| figures must differ | always | one fact duplicated verbatim — answerable from any single document, so requiring all of them would score correct retrieval as partial recall |
+
+The last one is what rejects BaFin's cookie banner, which pairs at cosine 0.990 —
+higher than anything with content in it — but carries no figures at all.
+
+### Labeling documents — `pool`
+
+Needs `../qdrant` and `../tei` up. No API key, no spend — it runs the retriever
+and hands you the results; the judging is yours.
+
+```bash
+.venv/bin/python -m rag_evaluation pool --session-id generate-20260825-184221-e18b2b --k 20
+.venv/bin/python -m rag_evaluation pool --session-id … --k 30          # the retriever's top_k, the deepest pool available
+```
+
+Questions come from that session's `entries.yaml` and `aggregate.yaml`; the
+output is written to `pool.yaml` in the same directory, so one session directory
+holds the whole review pile. `--ids` narrows it to named entries.
+
+Every candidate is one line — delete the wrong ones and paste the rest into
+`relevant_documents`. A candidate is a `source_system` + `url` pair, because the
+url alone does not identify a document. Already-labeled documents are omitted —
+labels accumulate, so re-pooling shows new work only.
+
 ## Tier 1 — retrieval, no LLM
 
 Needs `../qdrant` and `../tei` up. No API key, no spend, seconds per run.
@@ -24,50 +127,6 @@ Needs `../qdrant` and `../tei` up. No API key, no spend, seconds per run.
 
 Only entries with `relevant_documents` are scored; the summary says how many, because
 a mean over three of fifteen entries is not a score of the system.
-
-## Seeding entries — `generate`
-
-Needs `../qdrant` up, `../postgres` up, and `OPENROUTER_API_KEY`. Samples
-documents from the ledger and asks Gemini for a summary plus one question the
-summary answers.
-
-```bash
-.venv/bin/python -m rag_evaluation generate --n 50 --seed 7 --dry-run   # the sample only
-.venv/bin/python -m rag_evaluation generate --n 50 --seed 7
-```
-
-The reverse of `pool`: the question is written *from* one document, so
-`relevant_documents` is exact and needs no labeling. What needs a human is the
-question — that it stands on its own, and that it names enough to pick this
-document out of a corpus of similar ones. Each run writes
-`data/<session_id>/entries.yaml` (the entries) and `review.jsonl` (the full
-summaries and the failures) — the same session id its MLflow traces carry.
-Review `entries.yaml`, delete the weak entries, paste the rest into
-`golden_set.yaml`. `--out` moves the base directory; the session subdirectory is
-always made under it.
-
-`reference` comes out empty on purpose; the proposed answer sits in a comment
-under each entry (`--reference` puts it in the field instead). EVALUATION.md's
-rule is that references are written by hand — a machine-written one turns tier 2
-into a test of two models agreeing.
-
-The writer model is a third family, `google/gemini-3.7-flash`, so it is neither
-the agent's (Claude) nor the judge's (GPT). `--model` or
-`RAG_EVAL_GENERATE_MODEL` override it. `generated.jsonl` holds each document's
-full summary and every failure.
-
-## Labeling — `pool`
-
-```bash
-.venv/bin/python -m rag_evaluation pool --k 20            # paste-ready YAML
-.venv/bin/python -m rag_evaluation pool --with-rerank     # +1 run, ~222 s/query
-```
-
-Prints what several configurations retrieved, one candidate per line; delete the
-wrong lines and paste the rest into `relevant_documents`. A candidate is a
-`source_system` + `url` pair, because the url alone does not identify a document.
-Already-labeled documents are omitted — labels accumulate, so re-pooling shows
-new work only.
 
 ## Tiers 2 and 3 — the judge scorers
 
