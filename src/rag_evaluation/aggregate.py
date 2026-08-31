@@ -110,13 +110,20 @@ Rules, all of them about how the question will be used. It is asked against the 
 whole corpus with the documents withheld, and the system is scored on whether it \
 finds every one of them again:
 
-- Self-contained. Never refer to "the statements", "these documents" or "the \
-above" — at scoring time there is no document in view.
+- Self-contained. Never refer to "the statements", "these documents", "the \
+above", "the title", "the page" or "the section" — at scoring time there is no \
+document in view. "die im Titel angegebene Änderung" is unusable however well it \
+reads.
 - It must genuinely need all of them. "What was M3 growth in June?" needs one \
 document; "How did M3 growth develop between March and June?" needs four. Write \
 the second kind.
 - Name the range explicitly — the months, the periods, the subjects covered — so \
 that a reader knows what is being asked without seeing the sources.
+- Identify the documents by what they say, not by where they are stored. \
+Identifiers a reader would use are good: an ISIN, a circular number like 05/2018 \
+(WA), a fund name, a date. Storage handles are not: Confluence page ids, wiki \
+space keys, URLs, file names. A question quoting one is answered by string \
+matching and tests nothing about retrieval.
 - Do not ask for a specific answer length or format.
 - Write in the language the statements are written in.
 

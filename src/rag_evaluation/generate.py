@@ -252,12 +252,18 @@ against the WHOLE corpus, with the document withheld, and the system is scored \
 on whether it finds this document again:
 
 - Self-contained. Never refer to "the document", "this text", "the attached \
-report" or "the above" — at scoring time there is no document in view, only the \
-question.
+report", "the above", "the title", "the page" or "the section" — at scoring time \
+there is no document in view, only the question. "die im Titel angegebene \
+Änderung" is unusable however well it reads.
 - Specific enough to identify this document among many similar ones. Name the \
 institution, instrument, fund, ISIN, date or figure the answer turns on. "What \
 were the interest rates?" matches fifty documents; "What were euro area bank \
 interest rates in June 2026?" matches one.
+- Identify the document by what it says, not by where it is stored. Identifiers a \
+reader would use are good: an ISIN, a circular number like 05/2018 (WA), a fund \
+name, a date. Storage handles are not: Confluence page ids, wiki space keys, URLs, \
+file names. A question quoting one is answered by string matching and tests \
+nothing about retrieval.
 - Not a restatement of the title. If the title alone answers it, it tests \
 nothing.
 - Answerable from one point, not assembled from several.
