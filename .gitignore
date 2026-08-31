@@ -11,3 +11,4 @@ __pycache__/
 # Data directory
 data/*
 !data/golden_set.yaml
+.env
