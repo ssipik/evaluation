@@ -21,6 +21,12 @@ dependencies = [
     # `generate` reads the ledger to sample documents — the one place this
     # module touches Postgres. Core + text(), not the stages' table mirrors: it
     # only ever runs one read-only select.
+    # `curve` draws metric-vs-parameter plots and logs them as MLflow artifacts.
+    # seaborn for the drawing, matplotlib because it owns the Figure that
+    # mlflow.log_figure takes; mlflow already pulls matplotlib in, but this
+    # module imports it directly so it is pinned here too.
+    "seaborn>=0.13",
+    "matplotlib>=3.8",
     "SQLAlchemy>=2.0",
     "psycopg[binary]>=3.2",
     # `generate`'s transport. Direct rather than through rag-agent's build_llm,

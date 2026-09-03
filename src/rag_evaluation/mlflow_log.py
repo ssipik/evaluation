@@ -18,7 +18,7 @@ import logging
 import os
 import uuid
 from collections.abc import Iterator
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 
 import urllib3
@@ -29,6 +29,7 @@ from rag_config.params import ingest_fingerprint
 
 __all__ = [
     "log_tier1",
+    "log_curve",
     "generation_run",
     "trace_session",
     "new_session_id",
@@ -138,28 +139,103 @@ def log_tier1(
 
         configure(experiment)
         with mlflow.start_run(run_name=run_name):
-            mlflow.log_params(_params(settings))
-            mlflow.log_params(
-                {"golden_set": golden_path, "golden_entries": len(report.results)}
-            )
-            mlflow.log_metrics(report.means)
-            # Coverage is a metric, not a footnote: it says how much of the set
-            # the means are actually over.
-            mlflow.log_metrics(
-                {
-                    "scored_entries": len(report.scored),
-                    "coverage": len(report.scored) / len(report.results)
-                    if report.results
-                    else 0.0,
-                }
-            )
-            for attribute in ("language", "source_system"):
-                for group, means in report.by(attribute).items():
-                    for name, value in means.items():
-                        mlflow.log_metric(f"{attribute}.{group}.{name}", value)
-            mlflow.log_text(_per_entry_csv(report), "per_entry.csv")
+            _log_one_report(report, settings, golden_path)
     except Exception as exc:
         log.warning("MLflow logging failed, scores are still above: %s", exc)
+
+
+def _log_one_report(report, settings: Settings, golden_path: str) -> None:
+    """Params, means, the per-attribute split and the per-entry csv of one
+    report, into whichever run is active."""
+    import mlflow
+
+    mlflow.log_params(_params(settings))
+    mlflow.log_params(
+        {
+            "golden_set": golden_path,
+            "golden_entries": len(report.results),
+            "k": report.k,
+        }
+    )
+    mlflow.log_metrics(report.means)
+    # Coverage is a metric, not a footnote: it says how much of the set the
+    # means are actually over.
+    mlflow.log_metrics(
+        {
+            "scored_entries": len(report.scored),
+            "coverage": len(report.scored) / len(report.results)
+            if report.results
+            else 0.0,
+        }
+    )
+    for attribute in ("language", "source_system"):
+        for group, means in report.by(attribute).items():
+            for name, value in means.items():
+                mlflow.log_metric(f"{attribute}.{group}.{name}", value)
+    mlflow.log_text(_per_entry_csv(report), "per_entry.csv")
+
+
+def log_curve(
+    rows,
+    param: str,
+    settings: Settings,
+    golden_path: str,
+    run_name: str | None = None,
+    experiment: str = EXPERIMENT,
+) -> None:
+    """One parent run for the sweep, one nested child per value.
+
+    - parent: the swept values as step-indexed metrics, plus the plots and csv
+    - child:  the full report for one value, params carrying that value
+
+    Steps are the values themselves when they are whole numbers, so MLflow's
+    own chart reads as metric vs parameter; otherwise the index, and the csv
+    artifact carries the real values.
+    """
+    if not active() or not rows:
+        return
+    try:
+        import mlflow
+
+        from rag_evaluation.curve import curve_csv, make_figures
+
+        configure(experiment)
+        values = [value for value, _ in rows]
+        stepped = all(float(v) == int(v) for v in values if isinstance(v, (int, float)))
+        deepest = rows[-1][1]
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_params(
+                {
+                    **_params(settings),
+                    "golden_set": golden_path,
+                    "golden_entries": len(deepest.results),
+                    "swept_param": param,
+                    "swept_values": ",".join(str(v) for v in values),
+                }
+            )
+            for i, (value, report) in enumerate(rows):
+                step = int(value) if stepped and not isinstance(value, bool) else i
+                for name, mean in report.means.items():
+                    mlflow.log_metric(name, mean, step=step)
+                child = f"{run_name}-{param}={value}" if run_name else f"{param}={value}"
+                with mlflow.start_run(run_name=child, nested=True):
+                    mlflow.log_param(param, value)
+                    _log_one_report(report, replace(settings, **{param: value}), golden_path)
+            mlflow.log_text(curve_csv(rows, param), f"{param}_curve.csv")
+            figures = make_figures(rows, param)
+            for path, figure in figures.items():
+                mlflow.log_figure(figure, path)
+            _close_figures(figures.values())
+    except Exception as exc:
+        log.warning("MLflow logging failed, scores are still above: %s", exc)
+
+
+def _close_figures(figures) -> None:
+    """Matplotlib keeps every figure alive until it is closed."""
+    import matplotlib.pyplot as plt
+
+    for figure in figures:
+        plt.close(figure)
 
 
 def _per_entry_csv(report) -> str:

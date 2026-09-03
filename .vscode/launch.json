@@ -47,6 +47,22 @@
             ],
         },
         {
+            "name": "rag_evaluation - curve",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "rag_evaluation",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {
+                "RAG_RETRIEVE_TOP_K": "7"
+            },
+            "args": [
+                "curve",
+                "--param", "top_k", "--values", "1:21", "--run-name", "tunning_top_k",
+            ],
+        },
+        {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
