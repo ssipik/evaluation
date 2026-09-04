@@ -1,10 +1,5 @@
-# Golden Q&A set for RAGAS evaluation (ARCHITECTURE.md block 12).
-#
 # The questions below are SEEDED from what is actually in the corpus — every one
-# has matching documents today. The `reference` answers are NOT written: they are
-# the part no tool can produce, because a reference answer invented from the same
-# retrieval the system uses only measures self-consistency.
-#
+# has matching documents today. 
 # You can run the harness before filling any of them in:
 #   - faithfulness and answer_relevancy need no reference and score immediately
 #   - context_recall and context_precision are skipped per entry until `reference`
@@ -42,120 +37,633 @@
 #   tests      free-text note on what this entry is meant to stress
 questions:
 
-  # --- ECB press releases: paraphrase and topical retrieval ------------------
-  - id: digital-euro-pilot-psps
-    question: "How many payment service providers did the ECB select for the digital euro pilot?"
+  - id: how-does-get-capital-esg-exporter-program
+    question: "How does GET Capital's ESG Exporter program handle futures instruments when preparing data for ESG Manager?"
     language: en
-    reference: ""
+    reference: "For futures, the ESG Exporter first identifies the underlying index and then finds a corresponding ETF for that index (Future → Index → ETF)."
     relevant_documents:
-      - source_system: web_rss
-        url: https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260714~8cd07d9d45.en.html
-    tests: "exact figure in a press release; should be an easy sparse+dense hit"
-
-  - id: digital-euro-warum
-    question: "Warum entwickelt die EZB den digitalen Euro?"
-    language: de
-    reference: ""
-    relevant_documents: []
-    tests: "German question against English source documents — cross-lingual dense retrieval"
-
-  - id: ai-monetary-policy
-    question: "What did Philip Lane say about AI and monetary policy?"
+      - source_system: confluence    # rank 1 [hybrid] ESG Reports
+        url: "https://get-capital.atlassian.net/wiki/spaces/QUA/pages/348258305"
+    tests: "generated from ESG Reports"
+  
+  - id: what-value-must-set-for-the-benchmarkmethod
+    question: "What value must be set for the BenchmarkMethod field when inserting a new entry into the Benchmark database table?"
     language: en
-    reference: ""
-    relevant_documents: []
-    tests: "named speaker + topic; title match should dominate"
-
-  - id: lagarde-interview
-    question: "Was hat Christine Lagarde in ihrem Interview mit Les Échos gesagt?"
-    language: de
-    reference: ""
-    relevant_documents: []
-    tests: "German question, English source, named entity in the title"
-
-  # --- ECB statistical releases: figures and dates ---------------------------
-  - id: bank-interest-rates-june
-    question: "What were the euro area bank interest rates in June 2026?"
-    language: en
-    reference: ""
-    relevant_documents: []
-    tests: "date-qualified figure; two similar documents exist (March and June) — precision test"
-
-  - id: monetary-developments-m3
-    question: "How did M3 develop in the euro area in the most recent month reported?"
-    language: en
-    reference: ""
-    relevant_documents: []
-    tests: "aggregate identifier (M3) — a short exact token the dense leg blurs"
-
-  - id: geldmengenwachstum
-    question: "Wie hat sich das Geldmengenwachstum im Euroraum entwickelt?"
-    language: de
-    reference: ""
-    relevant_documents: []
-    tests: "German compound (Geldmengenwachstum) with no German source document — the deferred compound-splitting gap, block 5"
-
-  # --- Local fund documents: German and English, same ISINs ------------------
-  - id: fondsart-vanguard
-    question: "Um welche Art von Produkt handelt es sich bei dem Vanguard-Teilfonds?"
-    language: de
-    reference: ""
-    relevant_documents: []
-    tests: "German source document, German question — the only combination where the German BM25 leg does real work"
-
-  - id: isin-lookup
-    question: "Welche Informationen gibt es zum Fonds mit der ISIN IE000716YHJ7?"
-    language: de
-    reference: ""
+    reference: "It has to be set to 'Series'."
     relevant_documents:
-      - source_system: local_files
-        url: file:///PRP_DE_de_IE000716YHJ7_YES_2026-06-26.pdf
-      - source_system: local_files
-        url: file:///MR_DE_de_IE000716YHJ7_YES_2026-06-30.pdf
-    tests: "exact identifier lookup — the case block 7 says sparse exists for; dense alone should fail this"
-
-  - id: etf-benchmark-glossary
-    question: "What does 'benchmark' mean in the context of an ETF factsheet?"
+      - source_system: confluence    # rank 1 [hybrid] Create a New Benchmark
+        url: "https://get-capital.atlassian.net/wiki/spaces/QUA/pages/1084391425"
+    tests: "generated from Create a New Benchmark"
+  
+  - id: when-portfolio-strategy-changes-and-its
+    question: "When a portfolio strategy changes and its associated benchmark needs updating, what is the recommended method rather than creating a new benchmark?"
     language: en
-    reference: ""
-    relevant_documents: []
-    tests: "definition lookup inside a glossary section; section_path should reach the citation"
-
-  - id: fund-maturity
-    question: "Does the fund have a fixed maturity date?"
+    reference: "It is advised to extend the definition of the existing benchmark by defining a new interval."
+    relevant_documents:
+      - source_system: confluence    # rank 1 [hybrid] Update an Existing Benchmark
+        url: "https://get-capital.atlassian.net/wiki/spaces/QUA/pages/1086783489"
+    tests: "generated from Update an Existing Benchmark"
+  
+  - id: which-kag-interface-combines-normal-and
+    question: "Which KAG interface combines Normal and Future trade orders into a single Anlageempfehlung file structure rather than generating separate order files?"
     language: en
-    reference: ""
-    relevant_documents: []
-    tests: "English question against a German document (Laufzeit) — cross-lingual, no shared token"
-
-  # --- Confluence: internal process pages -----------------------------------
-  - id: create-benchmark
-    question: "How do I create a new benchmark?"
+    reference: "Deka (for the Schnoor portfolio)."
+    relevant_documents:
+      - source_system: confluence    # rank 1 [hybrid] Portfolio Input/Output File Types/Interfaces
+        url: "https://get-capital.atlassian.net/wiki/spaces/QUA/pages/1095827457"
+    tests: "generated from Portfolio Input/Output File Types/Interfaces"
+  
+  - id: what-naming-convention-used-for-the
+    question: "What naming convention is used for the generated Excel files of the Porsche and VW reports?"
     language: en
-    reference: ""
-    relevant_documents: []
-    tests: "internal how-to; should retrieve the Confluence page, not an ECB document"
-
-  - id: insert-dividend
-    question: "What are the steps to insert a dividend?"
-    language: en
-    reference: ""
-    relevant_documents: []
-    tests: "internal process page; the corpus has one obvious answer"
-
-  - id: benchmark-aktualisieren
-    question: "Wie aktualisiere ich einen bestehenden Benchmark?"
+    reference: "*_Bericht_<YYYY_MM_DD>.xlsx, where YYYY_MM_DD represents the optimization date to be reported (usually the previous Friday)."
+    relevant_documents:
+      - source_system: confluence    # rank 1 [hybrid] Porsche/VW Reports
+        url: "https://get-capital.atlassian.net/wiki/spaces/QUA/pages/488734817"
+    tests: "generated from Porsche/VW Reports"
+  
+  - id: wie-hoch-ist-die-hrliche-pauschalgeb-des
+    question: "Wie hoch ist die jährliche Pauschalgebühr des Xtrackers FTSE All-World UCITS ETF 1C (ISIN: IE000L6ZMMC4)?"
     language: de
-    reference: ""
-    relevant_documents: []
-    tests: "German question, English Confluence page — cross-lingual on a small source"
-
-  # --- Negative control ------------------------------------------------------
-  - id: out-of-corpus
-    question: "What is the capital of Australia?"
+    reference: "Die Pauschalgebühr beträgt 0,07% p.a."
+    relevant_documents:
+      - source_system: local_files    # rank 2 [hybrid] MR_DE_de_IE000L6ZMMC4_YES_2026-06-30.pdf
+        url: "file:///MR_DE_de_IE000L6ZMMC4_YES_2026-06-30.pdf"
+      - source_system: local_files    # rank 1 [hybrid] PRP_DE_de_IE000L6ZMMC4_YES_2026-06-02.pdf
+        url: "file:///PRP_DE_de_IE000L6ZMMC4_YES_2026-06-02.pdf"
+    tests: "generated from MR_DE_de_IE000L6ZMMC4_YES_2026-06-30.pdf"
+  
+  - id: what-was-the-ongoing-charges-figure-ocf-for
+    question: "What was the Ongoing Charges Figure (OCF) for the Vanguard FTSE All-World UCITS ETF (USD) Distributing (ISIN: IE00B3RBWM25) as of June 2026?"
     language: en
-    reference: "The knowledge base does not contain this information."
-    # No relevant_documents, and that is the point: nothing should be retrieved. Tier 1
-    # skips it (there is no ranking to score), tier 3 checks the refusal.
-    expect_refusal: true
-    tests: "NOT in the corpus. The agent must say it cannot answer rather than fall back on the model's own knowledge — the failure mode block 8's system prompt exists to prevent. This one has a reference already because the correct behaviour is knowable without the corpus."
+    reference: "0.19%"
+    relevant_documents:
+      - source_system: local_files    # rank 2 [hybrid] MR_DE_en_IE00B3RBWM25_YES_2026-06-30.pdf
+        url: "file:///MR_DE_en_IE00B3RBWM25_YES_2026-06-30.pdf"
+      - source_system: local_files    # rank 3 [hybrid] PRP_DE_de_IE00B3RBWM25_YES_2026-03-24.pdf
+        url: "file:///PRP_DE_de_IE00B3RBWM25_YES_2026-03-24.pdf"
+    tests: "generated from MR_DE_en_IE00B3RBWM25_YES_2026-06-30.pdf"
+  
+  - id: wie-hoch-ist-der-anteil-der-ertr-aus
+    question: "Wie hoch ist der Anteil der Erträge aus Wertpapierleihgeschäften, der beim Invesco FTSE All-World UCITS ETF (ISIN: IE000716YHJ7) an den Fonds zurückgeführt wird?"
+    language: de
+    reference: "90 % der Erträge aus Wertpapierleihgeschäften werden an den Fonds zurückgegeben (während 10 % von der Wertpapierleihstelle einbehalten werden)."
+    relevant_documents:
+      - source_system: local_files    # rank 2 [hybrid] PRP_DE_de_IE000716YHJ7_YES_2026-06-26.pdf
+        url: "file:///PRP_DE_de_IE000716YHJ7_YES_2026-06-26.pdf"
+    tests: "generated from PRP_DE_de_IE000716YHJ7_YES_2026-06-26.pdf"
+  
+  - id: unter-welcher-nettoinventarwert-schwelle
+    question: "Unter welcher Nettoinventarwert-Schwelle kann der Vanguard FTSE All-World UCITS ETF (ISIN: IE00BK5BQT80) gemäß Prospekt unter anderem aufgelöst werden?"
+    language: de
+    reference: "Der Fonds kann unter anderem aufgelöst werden, wenn sein Nettoinventarwert unter 100 Millionen USD oder den entsprechenden Gegenwert in einer anderen Währung fällt."
+    relevant_documents:
+      - source_system: local_files    # rank 1 [hybrid] PRP_DE_de_IE00BK5BQT80_YES_2026-03-24.pdf
+        url: "file:///PRP_DE_de_IE00BK5BQT80_YES_2026-03-24.pdf"
+    tests: "generated from PRP_DE_de_IE00BK5BQT80_YES_2026-03-24.pdf"
+  
+  - id: which-institution-serves-the-depositary
+    question: "Which institution serves as the depositary holding the assets in safekeeping for the iShares FTSE All-World UCITS ETF (ISIN: IE00097WZHZ9)?"
+    language: en
+    reference: "The Bank of New York Mellon SA/NV, Dublin Branch."
+    relevant_documents:
+      - source_system: local_files    # rank 1 [hybrid] PRP_DE_en_IE00097WZHZ9_YES_2026-05-12.pdf
+        url: "file:///PRP_DE_en_IE00097WZHZ9_YES_2026-05-12.pdf"
+    tests: "generated from PRP_DE_en_IE00097WZHZ9_YES_2026-05-12.pdf"
+  
+  - id: welches-gesch-ftszeichen-das-bafin
+    question: "Welches Geschäftszeichen trägt das BaFin-Rundschreiben zu den Mindestanforderungen an die Compliance-Funktion und weitere Verhaltens-, Organisations- und Transparenzpflichten (MaComp)?"
+    language: de
+    reference: "Das Rundschreiben trägt das Geschäftszeichen 05/2018 (WA)."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] MaComp in der Fassung vom 19.04.2018, geändert am 26.09.2024
+        url: "https://www.bafin.de/SharedDocs/Downloads/DE/Rundschreiben/dl_rs_0518_MaComp_fassung_september_2024.html"
+    tests: "generated from MaComp in der Fassung vom 19.04.2018, geändert am 26.09.2024"
+
+  - id: welches-datum-das-bafin-rundschreiben-2026
+    question: "Welches Datum trägt das BaFin-Rundschreiben 05/2026 (WA) zur Verwaltungspraxis zum Übernahmerecht?"
+    language: de
+    reference: "Das Rundschreiben datiert auf den 18.08.2026."
+    relevant_documents:
+      - source_system: web_rss    # rank 3 [hybrid] Rundschreiben 05/2026 (WA) - Verwaltungspraxis zum Übernahme
+        url: "https://www.bafin.de/SharedDocs/Downloads/DE/Rundschreiben/dl_rs_0526_verwaltungspraxis_zum_uebernahmerecht.html"
+    tests: "generated from Rundschreiben 05/2026 (WA) - Verwaltungspraxis zum Übernahmerecht"
+  
+  - id: welche-funktion-einheitlichen
+    question: "Welche Funktion im Einheitlichen Aufsichtsmechanismus (SSM) übt Nikolas Speer gemäß dem BaFin-Terminkalender für Mai 2026 aus?"
+    language: de
+    reference: "Er ist Vertreter des Mitglieds im Supervisory Board des Einheitlichen Aufsichtsmechanismus."
+    relevant_documents:
+      - source_system: web_rss    # rank 6 [hybrid] Termine von Nikolas Speer - Mai 2026
+        url: "https://www.bafin.de/SharedDocs/Downloads/DE/Termine_SSM_EDBA/2026/2605_calendar_ssm_speer.html"
+    tests: "generated from Termine von Nikolas Speer - Mai 2026"
+    # proposed answer: Er ist Vertreter des Mitglieds im Supervisory Board des Einheitlichen Aufsichtsmechanismus.
+
+  - id: welches-land-erteilte-die-bafin-der
+    question: "Für welches Land erteilte die BaFin der RheinLand Versicherungs Aktiengesellschaft mit Sitz in Neuss die Zustimmung zur Erweiterung des Direktversicherungsgeschäfts im Dienstleistungsverkehr?"
+    language: de
+    reference: "Schweden"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] RheinLand Versicherungs Aktiengesellschaft
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Bekanntmachungen/08_Erweiterung_GB_Dienstleistungsverkehr/2026_08-11_rheinlandversicherung_ag_va.html"
+    tests: "generated from RheinLand Versicherungs Aktiengesellschaft"
+  
+  - id: unter-welcher-adresse-befindet-sich-die
+    question: "Unter welcher Adresse befindet sich die Zweigniederlassung Deutschland der Nationale-Nederlanden Schadeverzekering Maatschappij N.V. (Kennnummer 5247)?"
+    language: de
+    reference: "Erna-Scheffler-Straße 1A, 6. Stock, 51103 Köln."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Nationale-Nederlanden Schadeverzekering Maatschappij N.V. - 
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Bekanntmachungen/12_Erweiterung_GB_Niederlassungsverkehr_DE/2026_08_06_maatschappij_nv_va.html"
+    tests: "generated from Nationale-Nederlanden Schadeverzekering Maatschappij N.V. - Zweigniederlassung Deutschland"
+  
+  - id: durch-verf-gung-von-welchem-datum-genehmigte
+    question: "Durch Verfügung von welchem Datum genehmigte die BaFin gemäß § 14 VAG die Verschmelzung der Freeyou Insurance AG auf die DEVK Allgemeine Versicherungs-Aktiengesellschaft?"
+    language: de
+    reference: "Die Genehmigung der Verschmelzung erfolgte durch Verfügung vom 28.07.2026."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Freeyou Insurance AG
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Bekanntmachungen/17_Verschmelzung/2026_08_06_freeyou_insurance_ag_va.html"
+    tests: "generated from Freeyou Insurance AG"
+  
+  - id: welchem-land-hat-die-volkswagen-versicherung
+    question: "In welchem Land hat die Volkswagen Versicherung AG laut der BaFin-Bekanntmachung vom 10.08.2026 den gesamten Geschäftsbetrieb ihrer Niederlassung eingestellt?"
+    language: de
+    reference: "In Frankreich."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Volkswagen Versicherung AG
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Bekanntmachungen/25_Einschraenkung_GB_Niederlassungsverkehr/2026_08_10_volkswagen_va.html"
+    tests: "generated from Volkswagen Versicherung AG"
+  
+  - id: unter-welcher-kennziffer-wurde-das
+    question: "Unter welcher Kennziffer wurde das Versicherungsunternehmen Thüga Schadenausgleichskasse München VVaG in der BaFin-Bekanntmachung über seine Beendigung der Liquidation geführt?"
+    language: de
+    reference: "Das Unternehmen wurde unter der Kennziffer 5767 geführt."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Thüga Schadenausgleichskasse München VVaG
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Bekanntmachungen/35_Beendigung_Liquidation/2026_08_06_thuega_va.html"
+    tests: "generated from Thüga Schadenausgleichskasse München VVaG"
+  
+  - id: welche-konkreten-bereiche-waren-laut-der
+    question: "Welche konkreten Bereiche waren laut der MaRisk-Sonderprüfung aus dem dritten Quartal 2025 von den organisatorischen Mängeln bei der State Bank of India Zweigniederlassung Frankfurt am Main betroffen?"
+    language: de
+    reference: "Betroffen waren die Bereiche Risikotragfähigkeit und Kreditprozesse."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] State Bank of India Zweigniederlassung Frankfurt am Main mus
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Massnahmen/60b_KWG_84_WpIG_und_57_GwG/meldung_2026_08_13_state_bank_of_india_zweigniederlassung_frankfurt_am_main.html?cms_expanded=true"
+    tests: "generated from State Bank of India Zweigniederlassung Frankfurt am Main muss ordnungsgemäße Geschäftsorganisation sicherstellen"
+  
+  - id: welche-gesch-ftsjahre-findet-das-bafin
+    question: "Für welche Geschäftsjahre findet das BaFin-Rundschreiben 04/2025 (VA) zur Solvabilität von kleinen Versicherungsunternehmen und Pensionsfonds erstmals Anwendung?"
+    language: de
+    reference: "Das Rundschreiben findet Anwendung auf Einreichungen des Solvabilitätsnachweises für Geschäftsjahre, die nach dem 31. Dezember 2024 enden."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Rundschreiben 04/2025 (VA)
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Rundschreiben/2025/rs_rundschreiben_04_25_va.html"
+    tests: "generated from Rundschreiben 04/2025 (VA)"
+  
+  - id: wie-lange-ssen-vorg-ngerversionen-der
+    question: "Wie lange müssen Vorgängerversionen der Dokumentation der Aufbau- und Ablauforganisation gemäß dem BaFin-Rundschreiben 09/2025 (VA) (MaGo für SII-VU) mindestens aufbewahrt werden?"
+    language: de
+    reference: "Vorgängerversionen der Dokumentation der Aufbau- und Ablauforganisation sind mindestens sechs Jahre aufzubewahren."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Rundschreiben 09/2025 (VA) - Aufsichtsrechtliche Mindestanfo
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Rundschreiben/2025/rs_rundschreiben_09_25_va.html"
+    tests: "generated from Rundschreiben 09/2025 (VA) - Aufsichtsrechtliche Mindestanforderungen an die Geschäftsorganisation von Versicherungsunternehmen unter Solvabilität II (MaGo für SII-VU)"
+  
+  - id: welchem-datum-gilt-das-bafin-rundschreiben
+    question: "Ab welchem Datum gilt das BaFin-Rundschreiben 08/2026 (WA) zur aufsichtsrechtlichen Einordnung von Vermögensanlagen unter der PRIIPs-Verordnung?"
+    language: de
+    reference: "Das Rundschreiben 08/2026 (WA) gilt ab dem 27.07.2026."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Rundschreiben 08/2026 (WA)
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Rundschreiben/2026/rs_08_26_verm%C3%B6gensanlagen.html"
+    tests: "generated from Rundschreiben 08/2026 (WA)"
+  
+  - id: auf-welche-gesetzliche-grundlage-tzt-die
+    question: "Auf welche gesetzliche Grundlage stützt die BaFin ihre Warnmeldung hinsichtlich unerlaubter Kreditangebote über die Website finorycred(.)com?"
+    language: de
+    reference: "Die Warnung der BaFin basiert auf § 37 Absatz 4 Kreditwesengesetz (KWG)."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] finorycred(.)com: Bafin warnt vor angeblichen Kreditangebote
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_05_finorycred.html"
+    tests: "generated from finorycred(.)com: Bafin warnt vor angeblichen Kreditangeboten"
+  
+  - id: welche-gef-lschte-register-website-nutzen
+    question: "Welche gefälschte Register-Website nutzen die Betreiber der Plattformen der Klingenstein Group laut BaFin, um fälschlicherweise eine Verbindung zur US-Börsenaufsicht SEC vorzutäuschen?"
+    language: de
+    reference: "Die Website eu.entity-verification(.)com, die laut BaFin fingiert ist und nicht von der US-amerikanischen SEC verwaltet wird."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Klingenstein Group: Bafin warnt vor Websites klingensteingro
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_05_klingenstein_group.html"
+    tests: "generated from Klingenstein Group: Bafin warnt vor Websites klingensteingroups(.)com sowie klingensteingroups(.)pro und weist auf Identitätsmissbrauch hin"
+  
+  - id: auf-welche-gesetzlichen-grundlagen-tzt-die
+    question: "Auf welche gesetzlichen Grundlagen stützt die BaFin ihre Information bezüglich der Angebote von Wealth Sprint Hub?"
+    language: de
+    reference: "Die Information der BaFin basiert auf § 37 Abs. 4 Kreditwesengesetz und § 10 Absatz 7 Kryptomärkteaufsichtsgesetz."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Wealth Sprint Hub: Bafin warnt vor Angeboten auf diversen We
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_05_wealth_sprint_hub.html"
+    tests: "generated from Wealth Sprint Hub: Bafin warnt vor Angeboten auf diversen Websites"
+
+  - id: welche-unternehmensdaten-werden-laut-bafin
+    question: "Welche Unternehmensdaten werden laut BaFin im Impressum der unerlaubten Websites r-cap-management(.)net, r-cap-management(.)com und r-cap-management(.)de missbräuchlich verwendet?"
+    language: de
+    reference: "Die Betreiber nutzen im Impressum missbräuchlich die Unternehmensdaten der Röbbek Fund Management GmbH."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] r-cap-management(.)net, r-cap-management(.)com und r-cap-man
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_07_r_cap_management.html"
+    tests: "generated from r-cap-management(.)net, r-cap-management(.)com und r-cap-management(.)de: Bafin warnt vor Angeboten auf Websites"
+  
+  - id: auf-welche-gesetzliche-grundlage-tzt-die-2
+    question: "Auf welche gesetzliche Grundlage stützt die BaFin ihre Warnmeldung bezüglich des Identitätsmissbrauchs über die Websites 212trading(.)online und 212trading(.)pro?"
+    language: de
+    reference: "Die Veröffentlichung der BaFin stützt sich auf § 37 Absatz 4 Kreditwesengesetz (KWG)."
+    relevant_documents:
+      - source_system: web_rss    # rank 2 [hybrid] 212trading(.)online und 212trading(.)pro: Bafin warnt vor We
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_10_212trading.html"
+    tests: "generated from 212trading(.)online und 212trading(.)pro: Bafin warnt vor Websites und weist auf Identitätsmissbrauch hin"
+  
+  - id: welches-dublin-ans-ssige-unternehmen-ist
+    question: "Welches in Dublin ansässige Unternehmen ist laut BaFin mutmaßlich von einem Identitätsmissbrauch durch die Betreiber der Website capitalx(.)markets betroffen?"
+    language: de
+    reference: "CapitalX Market LTD"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] capitalx(.)markets: Bafin warnt vor Website und Identitätsmi
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_12_capitalx_markets.html"
+    tests: "generated from capitalx(.)markets: Bafin warnt vor Website und Identitätsmissbrauch"
+  
+  - id: welcher-investmentfonds-wird-bei-der
+    question: "Welcher Investmentfonds wird bei der britischen FCA unter der Registrierungsnummer geführt, die vom Betreiber der Website auextrade(.)com fälschlich angegeben wird?"
+    language: de
+    reference: "Allianz UK Listed Equity Income Fund"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] auextrade(.)com: Bafin warnt vor Website und weist auf Ident
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_13_auextrade_com.html"
+    tests: "generated from auextrade(.)com: Bafin warnt vor Website und weist auf Identitätsmissbrauch hin"
+  
+  - id: welche-domain-nutzen-die-betreiber-laut
+    question: "Welche Domain nutzen die Betreiber laut BaFin-Warnung vom 14.08.2026 neben @check24gruppe(.)com(.)de in gefälschten Formularen für Fest- und Tagesgeldangebote?"
+    language: de
+    reference: "In gefälschten Formularen verwenden die Betreiber die Domain @check24-eu(.)com(.)de."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Identitätsmissbrauch: Bafin warnt vor Fest- und Tagesgeldang
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_14_check24gruppe.html"
+    tests: "generated from Identitätsmissbrauch: Bafin warnt vor Fest- und Tagesgeldangeboten von der E-Mail-Adresse mit der Domain @check24gruppe(.)com(.)de"
+  
+  - id: auf-welcher-rechtsgrundlage-basiert-die
+    question: "Auf welcher Rechtsgrundlage basiert die Warnmeldung der BaFin bezüglich der Website basiswallet(.)co?"
+    language: de
+    reference: "Die Information der BaFin basiert auf § 10 Absatz 7 Kryptomärkteaufsichtsgesetz."
+    relevant_documents:
+      - source_system: web_rss    # rank 15 [hybrid] basiswallet(.)co: Bafin warnt vor der Website
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_19_basiswallet.html"
+    tests: "generated from basiswallet(.)co: Bafin warnt vor der Website"
+  
+  - id: auf-welcher-gesetzlichen-grundlage-beruht
+    question: "Auf welcher gesetzlichen Grundlage beruht die BaFin-Warnung bezüglich der Websites zafiroco.cr und ncwallet.net sowie der App „NC Wallet“?"
+    language: de
+    reference: "Die Information der BaFin basiert auf § 10 Absatz 7 Kryptomärkteaufsichtsgesetz."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] zafiroco(.)cr, ncwallet(.)net und„NC Wallet“: Bafin warnt vo
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/unerlaubte/2026/meldung_2026_08_19_zafiroco_ncwallet.html"
+    tests: "generated from zafiroco(.)cr, ncwallet(.)net und„NC Wallet“: Bafin warnt vor Websites und App"
+  
+  - id: mit-welcher-maximalen-geldbu-kann-ein-versto
+    question: "Mit welcher maximalen Geldbuße kann ein Verstoß gegen die Pflicht zur Veröffentlichung eines Wertpapier-Informationsblatts geahndet werden?"
+    language: de
+    reference: "Ein solcher Verstoß kann mit einer Geldbuße von bis zu 700.000 Euro geahndet werden."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] MyBali Coffee GmbH: Verdacht auf öffentliches Angebot der Te
+        url: "https://www.bafin.de/SharedDocs/Veroeffentlichungen/DE/Verbrauchermitteilung/weitere/2026/meldung_2026_08_13_my_bali_coffee_gmbh.html"
+    tests: "generated from MyBali Coffee GmbH: Verdacht auf öffentliches Angebot der Teilschuldverschreibung ohne erforderliches Wertpapier-Informationsblatt"
+  
+  - id: according-the-june-2026-eurosystem-staff
+    question: "According to the June 2026 Eurosystem staff macroeconomic projections, what were the baseline real GDP growth forecasts for the euro area for 2026, 2027 and 2028?"
+    language: en
+    reference: "Real GDP growth was projected at 0.8% in 2026, 1.2% in 2027 and 1.5% in 2028."
+    relevant_documents:
+      - source_system: web_rss    # rank 3 [hybrid] Meeting of 10-11 June 2026
+        url: "https://www.ecb.europa.eu//press/accounts/2026/html/ecb.mg260709~0e7f8241c9.en.html"
+      # - source_system: web_rss    # rank 1 [hybrid] Results of the ECB Survey of Professional Forecasters for th
+      #   url: "https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260724~a099353951.en.html"
+    tests: "generated from Meeting of 10-11 June 2026"
+  
+  - id: what-administrative-penalty-amount-did-the
+    question: "What administrative penalty amount did the ECB impose on Banque Internationale à Luxembourg (BIL) in June 2026 for failing to apply its approved internal models?"
+    language: en
+    reference: "€3,255,000"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Decisions taken by the Governing Council of the ECB (in addi
+        url: "https://www.ecb.europa.eu//press/govcdec/otherdec/2026/html/ecb.gc260724~eebbc30622.en.html"
+    tests: "generated from Decisions taken by the Governing Council of the ECB (in addition to decisions setting interest rates)"
+  
+  - id: what-holding-limit-range-for-the-digital
+    question: "What holding limit range for the digital euro was tested in ECB simulations conducted for the European Parliament without identifying relevant risks to financial stability?"
+    language: en
+    reference: "Between €500 and €3,000."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Piero Cipollone: Interview with Jornal de Negocios
+        url: "https://www.ecb.europa.eu//press/inter/date/2026/html/ecb.in260713~d928475792.en.html"
+    tests: "generated from Piero Cipollone: Interview with Jornal de Negocios"
+  
+  - id: according-ecb-executive-board-member-piero
+    question: "According to ECB Executive Board member Piero Cipollone in July 2026, what are the estimated total development cost and annual operating costs of the digital euro for the Eurosystem?"
+    language: en
+    reference: "The total development cost for the Eurosystem is estimated at around €1.3 billion, and the annual operating costs are estimated at approximately €320 million."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Piero Cipollone: Interview with Ouest-France
+        url: "https://www.ecb.europa.eu//press/inter/date/2026/html/ecb.in260715~ab95a43007.en.html"
+    tests: "generated from Piero Cipollone: Interview with Ouest-France"
+  
+  - id: according-ecb-executive-board-member-piero-2
+    question: "According to ECB Executive Board member Piero Cipollone, when is the Eurosystem's Pontes platform—designed to bridge DLT platforms and TARGET Services for settling transactions in central bank money—scheduled to launch?"
+    language: en
+    reference: "September 2026"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Piero Cipollone: The digital transformation of money, paymen
+        url: "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260702_1~c58dcd8150.en.pdf"
+    tests: "generated from Piero Cipollone: The digital transformation of money, payments and finance"
+  
+  - id: according-the-ecb-presentation-isabel
+    question: "According to the ECB presentation by Isabel Schnabel at the Jahreswirtschaftsempfang NRW in July 2026, which three countries use 2024 rather than 2021 as their base year for the national escape clause (NEC) on defence spending?"
+    language: en
+    reference: "Spain (ES), Bulgaria (BG) and Greece (GR)."
+    relevant_documents:
+      - source_system: web_rss    # rank 2 [hybrid] Isabel Schnabel: How to foster growth and resilience in Euro
+        url: "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260713~e78632b27a.en.pdf"
+    tests: "generated from Isabel Schnabel: How to foster growth and resilience in Europe"
+  
+  - id: what-the-ecb-estimated-total-investment-cost
+    question: "What is the ECB's estimated total investment cost across the euro area for implementing the digital euro over a four-year period?"
+    language: en
+    reference: "Between €4 billion and €5.8 billion (around 3.4% of significant banks' annual technology budgets)."
+    relevant_documents:
+      - source_system: web_rss    # rank 2 [hybrid] Piero Cipollone: The cooperative spirit at the heart of the 
+        url: "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260717~b6a156dc40.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Piero Cipollone: Interview with Ouest-France
+        url: "https://www.ecb.europa.eu//press/inter/date/2026/html/ecb.in260715~ab95a43007.en.html"
+    tests: "generated from Piero Cipollone: The cooperative spirit at the heart of the digital euro"
+  
+  - id: under-the-fiscal-framework-outlined-philip
+    question: "Under the EU fiscal framework on defence spending outlined in June and July 2026, how much additional flexibility as a percentage of GDP is provided for defence expenditure from 2025 to 2028 under the national escape clause?"
+    language: en
+    reference: "It is equivalent to 1.5% of GDP from 2025 to 2028."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Philip R. Lane: The rise in defence spending and the euro ar
+        url: "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260817~1f9f7149c9.en.pdf"
+      - source_system: web_rss    # rank 2 [hybrid] Isabel Schnabel: How to foster growth and resilience in Euro
+        url: "https://www.ecb.europa.eu//press/key/date/2026/html/ecb.sp260713~e78632b27a.en.pdf"
+    tests: "generated from Philip R. Lane: The rise in defence spending and the euro area economy"
+  
+  - id: what-levels-were-maintained-for-the-deposit
+    question: "What levels were maintained for the deposit facility, main refinancing operations, and marginal lending facility rates in the ECB monetary policy decision of 23 July 2026?"
+    language: en
+    reference: "The interest rates were maintained at 2.25% for the deposit facility, 2.40% for the main refinancing operations, and 2.65% for the marginal lending facility."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Monetary policy decisions
+        url: "https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.mp260723~29f24d99bc.en.html"
+    tests: "generated from Monetary policy decisions"
+  
+  - id: how-many-experts-composed-the-independent
+    question: "How many experts composed the independent jury nominated by euro area central banks to shortlist the design proposals for the next series of euro banknotes in 2026?"
+    language: en
+    reference: "21 experts"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] ECB reveals shortlisted designs for new banknotes and launch
+        url: "https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260723~c2d43f9170.en.html"
+      - source_system: web_rss    # rank 2 [hybrid] Decisions taken by the Governing Council of the ECB (in addi
+        url: "https://www.ecb.europa.eu//press/govcdec/otherdec/2026/html/ecb.gc260724~eebbc30622.en.html"
+    tests: "generated from ECB reveals shortlisted designs for new banknotes and launches public survey"
+  
+  - id: according-the-june-2026-ecb-consumer
+    question: "According to the June 2026 ECB Consumer Expectations Survey, what were median consumer expectations for inflation over the next 12 months?"
+    language: en
+    reference: "3.0% (down from 3.5% in May)"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] ECB Consumer Expectations Survey results – June 2026
+        url: "https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260724_1~fa277eb6fe.en.html"
+    tests: "generated from ECB Consumer Expectations Survey results – June 2026"
+  
+  - id: what-the-maximum-line-size-per-individual
+    question: "What is the maximum line size per individual central bank under the ECB's enhanced repo facility (EUREP) established in 2026?"
+    language: en
+    reference: "The maximum line size per individual central bank is EUR 50 billion."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] ECB to start implementing enhanced repo facility for central
+        url: "https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260724_2~d7d475d2f0.en.html"
+    tests: "generated from ECB to start implementing enhanced repo facility for central banks"
+  
+  - id: what-the-maximum-additional-reduction-final
+    question: "What is the maximum additional reduction in final collateral value applicable to bonds and credit claims under the Eurosystem's climate factor framework announced by the ECB in July 2026?"
+    language: en
+    reference: "The maximum additional reduction in final collateral value is 5%."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] ECB to extend use of climate factors in Eurosystem collatera
+        url: "https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260724_4~f082ce289d.en.html"
+    tests: "generated from ECB to extend use of climate factors in Eurosystem collateral framework to non-financial corporate credit claims"
+  
+  - id: according-the-june-2026-eurosystem-staff-2
+    question: "According to the June 2026 Eurosystem staff macroeconomic projections cited in the ECB's July 2026 wage tracker release, what was the projected yearly growth rate of compensation per employee in the euro area for 2026?"
+    language: en
+    reference: "3.2%"
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] ECB wage tracker at 2.7% in Q1 2027, indicating stable negot
+        url: "https://www.ecb.europa.eu//press/pr/date/2026/html/ecb.pr260729~4ad7508d8a.en.html"
+      - source_system: web_rss    # rank 6 [hybrid] Meeting of 10-11 June 2026
+        url: "https://www.ecb.europa.eu//press/accounts/2026/html/ecb.mg260709~0e7f8241c9.en.html"
+    tests: "generated from ECB wage tracker at 2.7% in Q1 2027, indicating stable negotiated wage pressures"
+  
+  - id: according-the-ecb-balance-payments-data-for
+    question: "According to the ECB's balance of payments data for March 2026, what was the total value of non-residents' net purchases of euro area debt securities in the 12 months to March 2026?"
+    language: en
+    reference: "Non-residents' net purchases of euro area debt securities amounted to €545 billion in the 12 months to March 2026."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+    tests: "generated from Euro area monthly balance of payments: March 2026"
+  
+  - id: what-was-the-consolidated-debt-gdp-ratio
+    question: "What was the consolidated debt-to-GDP ratio of euro area non-financial corporations in the first quarter of 2026?"
+    language: en
+    reference: "The consolidated debt-to-GDP ratio of euro area non-financial corporations decreased to 66.0% in the first quarter of 2026 (down from 67.5% in the first quarter of 2025)."
+    relevant_documents:
+      - source_system: web_rss    # rank 7 [hybrid] Households and non-financial corporations in the euro area: 
+        url: "https://www.ecb.europa.eu//press/stats/ffi/html/ecb.eaefd_early2026q1~af06811912.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area economic and financial developments by institution
+        url: "https://www.ecb.europa.eu//press/stats/ffi/html/ecb.eaefd_full2026q1~ec756b7b1a.en.html"
+    tests: "generated from Households and non-financial corporations in the euro area: first quarter of 2026"
+  
+  - id: according-the-ecb-monetary-developments
+    question: "According to the ECB monetary developments report for May 2026, what was the annual growth rate of deposits placed by investment funds other than money market funds in the euro area?"
+    language: en
+    reference: "-0.4% in May 2026 (up from -5.8% in April)"
+    relevant_documents:
+      - source_system: web_rss    # rank 3 [hybrid] Monetary developments in the euro area: May 2026
+        url: "https://www.ecb.europa.eu//press/stats/md/html/ecb.md2605~3c7ea02712.en.html"
+    tests: "generated from Monetary developments in the euro area: May 2026"
+  
+  - id: according-ecb-payment-statistics-how-many
+    question: "According to ECB payment statistics, how many point of sale (POS) terminals were in the euro area at the end of the second half of 2025, and what proportion accepted contactless transactions?"
+    language: en
+    reference: "There were around 25.7 million POS terminals, of which 93% accepted contactless transactions."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Payments statistics: second half of 2025
+        url: "https://www.ecb.europa.eu//press/stats/paysec/html/ecb.pis2025h2~23986fb4a6.en.html"
+    tests: "generated from Payments statistics: second half of 2025"
+  
+  - id: how-did-the-month-cumulative-direct
+    question: "How did the 12-month cumulative direct investment flows by euro area residents in non-euro area assets and by non-residents in euro area assets develop across March 2026, April 2026, and June 2026?"
+    language: en
+    reference: "In the 12 months to March 2026, euro area residents recorded net direct investments of €272 billion in non-euro area assets, and non-residents invested a net €42 billion in euro area assets. In the 12 months to April 2026, resident direct investment in non-euro area assets rose to €280 billion in net terms, whereas non-resident net investment in euro area assets decreased to €8 billion. By the 12 months to June 2026, residents' net direct investments in non-euro area assets increased further to €352 billion, while non-residents' net direct investment in euro area assets grew to €71 billion."
+    relevant_documents:
+      - source_system: web_rss    # rank 3 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260618~e4d92a6f16.en.html"
+      - source_system: web_rss    # rank 2 [hybrid] Euro area monthly balance of payments: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260819~df1712eb4a.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
+  - id: how-did-the-month-changes-net-external
+    question: "How did the 12-month changes in net external assets (enhanced) of euro area MFIs evolve across March, April, and June 2026?"
+    language: en
+    reference: "The net external assets (enhanced) of euro area MFIs increased by €360 billion in the 12 months to March 2026, by €228 billion in the 12 months to April 2026, and by €270 billion in the 12 months to June 2026."
+    relevant_documents:
+      - source_system: web_rss    # rank 3 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260618~e4d92a6f16.en.html"
+      - source_system: web_rss    # rank 2 [hybrid] Euro area monthly balance of payments: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260819~df1712eb4a.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
+  - id: how-did-the-euro-area-month-cumulative
+    question: "How did the euro area 12-month cumulative current account surplus and its share of GDP evolve across the periods ending in March, April, and June 2026, compared to the corresponding previous 12-month periods?"
+    language: en
+    reference: "In the 12 months to March 2026, the euro area current account surplus was €275 billion (1.7% of GDP), down from €368 billion (2.4% of GDP) a year earlier. In the 12 months to April 2026, the surplus stood at €269 billion (1.7% of GDP), down from €351 billion (2.3% of GDP) one year earlier. In the 12 months to June 2026, the surplus stood at €276 billion (1.7% of GDP), down from €305 billion (2.0% of GDP) in the previous 12-month period."
+    relevant_documents:
+      - source_system: web_rss    # rank 2 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260618~e4d92a6f16.en.html"
+      - source_system: web_rss    # rank 4 [hybrid] Euro area monthly balance of payments: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260819~df1712eb4a.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
+  - id: how-did-the-eurosystem-stock-reserve-assets
+    question: "How did the Eurosystem's stock of reserve assets and the associated negative price changes driven by declining gold prices evolve in March, April, and June 2026?"
+    language: en
+    reference: "In March 2026, the Eurosystem's reserve assets fell to €1,908.1 billion (down from €2,045.8 billion in February), driven primarily by negative price changes of €149.0 billion. In April 2026, the stock further decreased from €1,908.1 billion to €1,888.0 billion, primarily due to negative price changes of €12.0 billion. In June 2026, reserve assets dropped to €1,755.4 billion (down from €1,872.8 billion in May), largely driven by €123.5 billion in negative price changes due to declining monetary gold prices."
+    relevant_documents:
+      - source_system: web_rss    # rank 2 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260618~e4d92a6f16.en.html"
+      - source_system: web_rss    # rank 3 [hybrid] Euro area monthly balance of payments: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260819~df1712eb4a.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
+  - id: what-were-the-euro-area-residents-net
+    question: "What were the euro area residents' net acquisitions of non-euro area assets and net incurrence of liabilities in other investment in the 12-month periods ending in March, April, and June 2026?"
+    reference: "In the 12-month period to March 2026, euro area residents recorded net acquisitions of non-euro area assets of €595 billion and net incurrence of liabilities of €361 billion. In the 12 months to April 2026, net acquisitions of assets were €618 billion and net incurrence of liabilities was €354 billion. In the 12 months to June 2026, net acquisitions of non-euro area assets rose to €753 billion while net incurrence of liabilities reached €537 billion.  "
+    language: en
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+      - source_system: web_rss    # rank 2 [hybrid] Euro area monthly balance of payments: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260618~e4d92a6f16.en.html"
+      - source_system: web_rss    # rank 3 [hybrid] Euro area monthly balance of payments: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260819~df1712eb4a.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
+  - id: how-did-the-interest-rates-new-loans-euro
+    question: "How did the interest rates on new loans to euro area households for consumption change in March 2026 and June 2026, and what were the resulting rates in each of those months?"
+    language: en
+    reference: "In March 2026, the interest rate on new loans to euro area households for consumption decreased by 5 basis points to 7.46%, whereas in June 2026, it decreased by 12 basis points to 7.50%."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Euro area bank interest rate statistics: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir2605~8bd04df5cc.en.html"
+      - source_system: web_rss    # rank 5 [hybrid] Euro area bank interest rate statistics: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir260731~208a979498.en.html"
+    tests: "aggregation across 2 documents — recall fails if any is missing"
+  
+  - id: how-did-non-resident-net-purchases-euro-area
+    question: "How did non-resident net purchases of euro area equity and debt securities develop across the 12-month periods ending in March, April, and June 2026, and what were the net purchases by euro area residents of non-euro area securities in the 12 months to April 2026?"
+    language: en
+    reference: "Over the 12-month periods, non-resident net purchases of euro area portfolio securities evolved as follows: in the 12 months to March 2026, non-residents purchased €436 billion in equity and €545 billion in debt securities; in the 12 months to April 2026, non-residents recorded net purchases totaling €1,040 billion (€477 billion in equity and €563 billion in debt securities); and in the 12 months to June 2026, non-residents purchased €499 billion in equity and €624 billion in debt securities. In addition, during the 12 months to April 2026, euro area residents made net purchases of €794 billion in non-euro area securities, consisting of €218 billion in equity and €576 billion in debt securities."
+    relevant_documents:
+      - source_system: web_rss    # rank 2 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260618~e4d92a6f16.en.html"
+      - source_system: web_rss    # rank 3 [hybrid] Euro area monthly balance of payments: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260819~df1712eb4a.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
+  - id: how-did-the-euro-area-monthly-current
+    question: "How did the euro area monthly current account surplus evolve from March 2026 to June 2026?"
+    language: en
+    reference: "The euro area current account surplus recorded €15 billion in March 2026, increased to €16 billion in April 2026, rose further to €26 billion in May 2026, and reached €35 billion in June 2026."
+    relevant_documents:
+      - source_system: web_rss    # rank 4 [hybrid] Euro area monthly balance of payments: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260618~e4d92a6f16.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area monthly balance of payments: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260819~df1712eb4a.en.html"
+      - source_system: web_rss    # rank 2 [hybrid] Euro area monthly balance of payments: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260521~bfe72faad3.en.html"
+      - source_system: web_rss    # rank 5 [hybrid] Euro area monthly balance of payments: May 2026
+        url: "https://www.ecb.europa.eu//press/stats/bop/2026/html/ecb.bp260717~978df5cd04.en.html"
+    tests: "aggregation across 2 documents — recall fails if any is missing"
+  
+  - id: welche-unterschiedlichen-vergleichsversionen
+    question: "Welche unterschiedlichen Vergleichsversionen stellt die BaFin im Rahmen der 9. MaRisk-Novelle bereit?"
+    language: de
+    reference: "Im Zusammenhang mit der 9. MaRisk-Novelle stellt die BaFin zum einen eine Vergleichsversion der 8. MaRisk-Novelle zur 9. MaRisk-Novelle und zum anderen eine Vergleichsversion der Konsultationsfassung zur Veröffentlichungsfassung der 9. MaRisk-Novelle bereit."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Vergleichsversion der 8. MaRisk Novelle zur 9. MaRisk Novell
+        url: "https://www.bafin.de/SharedDocs/Downloads/DE/Rundschreiben/dl_rs_0626_9_marisk_vergleichsfassung_8_marisk.html"
+      - source_system: web_rss    # rank 6 [hybrid] Vergleichsversion der Konsultationsfassung zur Veröffentlich
+        url: "https://www.bafin.de/SharedDocs/Downloads/DE/Rundschreiben/dl_rs_0626_9_marisk_vergleichsfassung_konsultation.html"
+    tests: "aggregation across 2 documents — recall fails if any is missing"
+  
+  - id: how-did-the-euro-area-household-debt-income
+    question: "How did the euro area household debt-to-income and debt-to-GDP ratios develop from the fourth quarter of 2024 through the fourth quarter of 2025 to the first quarter of 2026?"
+    language: en
+    reference: "The euro area household debt-to-income ratio decreased from 81.7% in the fourth quarter of 2024 to 81.4% in the fourth quarter of 2025, and further fell to 81.0% in the first quarter of 2026. Over the same period, the household debt-to-GDP ratio declined from 51.1% in the fourth quarter of 2024 to 50.5% in the fourth quarter of 2025, reaching 50.3% in the first quarter of 2026 (compared to 50.6% in the first quarter of 2025)."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Euro area economic and financial developments by institution
+        url: "https://www.ecb.europa.eu//press/stats/ffi/html/ecb.eaefd_full2025q4~9cc7fb565f.en.html"
+      - source_system: web_rss    # rank 4 [hybrid] Euro area economic and financial developments by institution
+        url: "https://www.ecb.europa.eu//press/stats/ffi/html/ecb.eaefd_full2026q1~ec756b7b1a.en.html"
+      - source_system: web_rss    # rank 9 [hybrid] Households and non-financial corporations in the euro area: 
+        url: "https://www.ecb.europa.eu//press/stats/ffi/html/ecb.eaefd_early2026q1~af06811912.en.html"
+    tests: "aggregation across 2 documents — recall fails if any is missing"
+  
+  - id: how-did-interest-rates-new-euro-area
+    question: "How did interest rates on new euro area corporate loans of over €1 million across various initial rate fixation periods change in March, April, and June 2026?"
+    language: en
+    reference: "In March 2026, the interest rate on loans with an initial fixation period of over three months and up to one year rose by 37 basis points to 3.51%. In April 2026, the rate on loans with an initial fixation period of over ten years increased by 9 basis points to 3.74%. In June 2026, the interest rate on loans with a floating rate and initial fixation period of up to three months increased by 26 basis points to 3.54%."
+    relevant_documents:
+      - source_system: web_rss    # rank 1 [hybrid] Euro area bank interest rate statistics: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir2605~8bd04df5cc.en.html"
+      - source_system: web_rss    # rank 2 [hybrid] Euro area bank interest rate statistics: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir2606~2665fb5ea4.en.html"
+      - source_system: web_rss    # rank 3 [hybrid] Euro area bank interest rate statistics: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir260731~208a979498.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
+  - id: how-did-the-composite-cost-borrowing
+    question: "How did the composite cost-of-borrowing indicator for new loans to corporations in the euro area develop in March, April, and June 2026?"
+    language: en
+    reference: "In March 2026, the euro area composite cost-of-borrowing indicator for new loans to corporations rose by 8 basis points to 3.59%. In April 2026, it was broadly unchanged at 3.62%, and in June 2026, it increased by 15 basis points to reach 3.79%."
+    relevant_documents:
+      - source_system: web_rss    # rank 2 [hybrid] Euro area bank interest rate statistics: March 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir2605~8bd04df5cc.en.html"
+      - source_system: web_rss    # rank 1 [hybrid] Euro area bank interest rate statistics: April 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir2606~2665fb5ea4.en.html"
+      - source_system: web_rss    # rank 4 [hybrid] Euro area bank interest rate statistics: June 2026
+        url: "https://www.ecb.europa.eu//press/stats/mfi/html/ecb.mir260731~208a979498.en.html"
+    tests: "aggregation across 3 documents — recall fails if any is missing"
+  
