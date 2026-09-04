@@ -25,6 +25,9 @@ dependencies = [
     # seaborn for the drawing, matplotlib because it owns the Figure that
     # mlflow.log_figure takes; mlflow already pulls matplotlib in, but this
     # module imports it directly so it is pinned here too.
+    # The golden set is logged as an MLflow dataset input, whose digest says
+    # which set a score belongs to; from_pandas is the only frame MLflow takes.
+    "pandas>=2.0",
     "seaborn>=0.13",
     "matplotlib>=3.8",
     "SQLAlchemy>=2.0",

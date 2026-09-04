@@ -158,11 +158,46 @@ def log_tier1(
         log.warning("MLflow logging failed, scores are still above: %s", exc)
 
 
+def _log_golden_dataset(report, golden_path: str) -> None:
+    """Record which golden set produced these numbers, as a hashed dataset input.
+
+    The digest is what makes two runs comparable — same digest, same questions
+    and labels — so `mlflow.search_runs(filter_string="datasets.digest='…'")`
+    answers whether a delta is attributable to the config or to the set having
+    moved under it (EVALUATION.md's frozen-set rule).
+
+    - sorted by id, so reordering the file is not a new set
+    - `tests` left out: it is a note about an entry, not something scored
+    """
+    import mlflow
+    import pandas as pd
+
+    rows = [
+        {
+            "id": entry.id,
+            "question": entry.question,
+            "language": entry.language or "",
+            "reference": entry.reference,
+            "expect_refusal": entry.expect_refusal,
+            "relevant_documents": "; ".join(
+                sorted(f"{d.source_system}|{d.url}" for d in entry.relevant_documents)
+            ),
+        }
+        for entry in sorted((r.entry for r in report.results), key=lambda e: e.id)
+    ]
+    dataset = mlflow.data.from_pandas(
+        pd.DataFrame(rows), name="golden_set", source=golden_path
+    )
+    mlflow.log_input(dataset, context="eval")
+    mlflow.log_param("golden_digest", dataset.digest)
+
+
 def _log_one_report(report, settings: Settings, golden_path: str) -> None:
     """Params, means, the per-attribute split and the per-entry csv of one
     report, into whichever run is active."""
     import mlflow
 
+    _log_golden_dataset(report, golden_path)
     mlflow.log_params(_params(settings))
     mlflow.log_params(
         {
@@ -218,6 +253,7 @@ def log_curve(
         stepped = all(float(v) == int(v) for v in values if isinstance(v, (int, float)))
         deepest = rows[-1][1]
         with mlflow.start_run(run_name=run_name):
+            _log_golden_dataset(deepest, golden_path)
             mlflow.log_params(
                 {
                     **_params(settings),
