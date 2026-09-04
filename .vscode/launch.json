@@ -59,7 +59,11 @@
             },
             "args": [
                 "curve",
-                "--param", "top_k", "--values", "1:21", "--run-name", "tunning_top_k",
+                // "--param", "top_k", "--values", "1:21",
+                // "--run-name", "tunning_top_k",
+                "--param", "rrf_k", "--values", "1:21",
+                "--set-params", "top_k=7",
+                "--run-name", "tunning_rrf_k",
             ],
         },
         {

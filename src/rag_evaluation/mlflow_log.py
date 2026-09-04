@@ -100,20 +100,34 @@ def configure(experiment: str) -> None:
     mlflow.set_experiment(experiment)
 
 
+# The knobs a query actually runs with, as opposed to the `agent.*` values
+# read off parameters.yaml.
+IN_FORCE = (
+    "prefetch_limit",
+    "top_k",
+    "rerank_top_n",
+    "rrf_k",
+    "rrf_dense_weight",
+    "rrf_sparse_weight",
+    "rerank_enabled",
+    "truncate_chunks",
+    "max_excerpt_chars",
+)
+
+
 def _params(settings: Settings) -> dict[str, object]:
     params = load_params()
     flat: dict[str, object] = {"ingest_fingerprint": ingest_fingerprint(params)}
     for section in ("parse_chunk", "embed", "agent", "plan", "finalize"):
         for key, value in asdict(getattr(params, section)).items():
             flat[f"{section}.{key}"] = value
-    # The settings actually in force, which env overrides may have moved off the
-    # file's values.
+    # The settings actually in force. `--set` and the env both move values off
+    # the file's, so every retrieval knob is recorded, not a subset: a run whose
+    # params disagree with what it measured is worse than one missing them.
+    flat.update({f"run.{name}": getattr(settings, name) for name in IN_FORCE})
     flat.update(
         {
             "run.qdrant_collection": settings.qdrant_collection,
-            "run.top_k": settings.top_k,
-            "run.rerank_enabled": settings.rerank_enabled,
-            "run.rerank_top_n": settings.rerank_top_n,
             "run.parameters_path": os.environ.get("RAG_PARAMETERS_PATH", "(packaged)"),
         }
     )

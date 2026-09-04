@@ -155,6 +155,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="an inclusive interval `1:21` or `1:21:2`, or a list `1,5,20` / `true,false`",
     )
     curve.add_argument(
+        "--set-params",
+        action="append",
+        default=[],
+        dest="overrides",
+        metavar="NAME=VALUE",
+        help="hold another parameter at a value for this sweep, e.g. --set-params top_k=7; repeatable",
+    )
+    curve.add_argument(
         "--run-name",
         help="name of the MLflow parent run; children are <name>-<param>=<value>",
     )
@@ -245,13 +253,21 @@ def main(argv: list[str] | None = None) -> int:
         from rag_evaluation.curve import (
             CurveError,
             format_table,
+            parse_overrides,
             parse_values,
             run_curve,
         )
         from rag_evaluation.mlflow_log import log_curve
 
-        settings = get_settings()
         try:
+            overrides = parse_overrides(args.overrides)
+            if args.param in overrides:
+                raise CurveError(
+                    f"--set-params {args.param} conflicts with --param {args.param}"
+                )
+            # One settings object for both: what is measured and what is logged
+            # must not be able to disagree.
+            settings = replace(get_settings(), **overrides)
             values = parse_values(args.values, args.param)
             rows = run_curve(entries, args.param, values, settings=settings)
         except CurveError as exc:

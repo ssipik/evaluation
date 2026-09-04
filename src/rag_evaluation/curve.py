@@ -27,6 +27,7 @@ __all__ = [
     "curve_csv",
     "format_table",
     "make_figures",
+    "parse_overrides",
     "parse_values",
     "run_curve",
 ]
@@ -94,6 +95,26 @@ def parse_values(spec: str, param: str) -> list[Any]:
             v += step
         return values
     return [_cast(part, kind) for part in spec.split(",") if part.strip()]
+
+
+def parse_overrides(specs: Sequence[str]) -> dict[str, Any]:
+    """`name=value` pairs: the knobs held at a chosen value while another is swept.
+
+    The runtime half of the precedence in CLAUDE.md — parameters.yaml is the
+    source, this moves one value for one run without editing the shared file.
+    """
+    out: dict[str, Any] = {}
+    for spec in specs:
+        name, sep, raw = spec.partition("=")
+        name = name.strip()
+        if not sep:
+            raise CurveError(f"{spec!r}: expected name=value")
+        if name not in SWEEPABLE:
+            raise CurveError(
+                f"{name!r} cannot be set — one of {', '.join(sorted(SWEEPABLE))}"
+            )
+        out[name] = _cast(raw, _TYPES.get(name, "int"))
+    return out
 
 
 def run_curve(
