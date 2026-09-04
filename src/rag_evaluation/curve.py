@@ -172,6 +172,10 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
 
     sns.set_theme(style="whitegrid", context="notebook")
 
+    # Every metric is computed over the top-k ranking, so the label carries the
+    # depth. Sweeping top_k makes the depth the x axis, and it stays symbolic.
+    depth = "k" if param == "top_k" else str(rows[0][1].k)
+
     xs = [value for value, _ in rows]
     # A bool or string sweep has no numeric axis, so plot against position and
     # label the ticks with the values.
@@ -185,7 +189,8 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
             marker="o",
             ax=axis,
         )
-        axis.set(xlabel=param, ylabel=name, title=f"{name} vs {param}", ylim=(0, 1.02))
+        label = f"{name}@{depth}"
+        axis.set(xlabel=param, ylabel=label, title=f"{label} vs {param}", ylim=(0, 1.02))
         if not numeric:
             axis.set_xticks(positions, [str(x) for x in xs])
         elif all(isinstance(x, int) for x in xs):
@@ -201,7 +206,8 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
     fig, axes = plt.subplots(2, 3, figsize=(16, 8))
     for axis, name in zip(axes.ravel(), METRIC_NAMES, strict=False):
         draw(axis, name)
-    fig.suptitle(f"tier 1 metrics vs {param}")
+    title = f"tier 1 metrics vs {param}"
+    fig.suptitle(title if param == "top_k" else f"{title}  (top_k={depth})")
     fig.tight_layout()
     figures[f"plots/all_metrics_vs_{param}.png"] = fig
     return figures
