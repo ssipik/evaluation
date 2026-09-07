@@ -160,6 +160,17 @@ export RAG_PG_DSN=postgresql://rag@localhost/rag_eval_<fingerprint>
 
 The runner refuses to write into the production collection or ledger.
 
+## Promoting a tuned set
+
+This module's part is the upstream half: `curve` and `sweep` produce the runs,
+and every run logs a `rag-retrieval-params` carrier model, so the winner can be
+registered from the MLflow UI's "Register Model" button under a name and an
+alias. That is what gives a configuration a version.
+
+Writing that version into the `parameters.yaml` `rag-config` ships is
+`rag-config`'s own command — the target is that package's file and the edit has
+to preserve its layout. See `config/README.md` for it.
+
 ## Environment
 
 | Variable | What it does |

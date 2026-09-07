@@ -12,12 +12,13 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from dataclasses import replace
 from dotenv import load_dotenv
 
-from rag_agent.settings import get_settings
+from rag_agent.settings import get_params, get_settings
 
 from rag_evaluation.generate import DEFAULT_MODEL as GENERATE_MODEL
+from rag_config import set_param
+
 from rag_evaluation.curve import SWEEPABLE
 from rag_evaluation.golden import DEFAULT_PATH, GoldenSetError, load_golden
 
@@ -36,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     tier1 = sub.add_parser("retrieval", help="tier 1: score retrieval, no LLM")
     _common(tier1)
     tier1.add_argument("--k", type=int, help="results per query (default: top_k)")
-    tier1.add_argument("--run-name", help="name of the MLflow run")
+    tier1.add_argument("--mlflow-run", help="name of the MLflow run")
     tier1.add_argument(
         "--rerank", action="store_true", help="score with the cross-encoder on"
     )
@@ -155,6 +156,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="an inclusive interval `1:21` or `1:21:2`, or a list `1,5,20` / `true,false`",
     )
     curve.add_argument(
+        "--mlflow-model",
+        metavar="NAME@ALIAS|NAME/VERSION",
+        help="start from a registered baseline, as MLflow addresses one: name@alias or name/version; --set-params wins over it, and it wins over parameters.yaml",
+    )
+    curve.add_argument(
         "--set-params",
         action="append",
         default=[],
@@ -163,7 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="hold another parameter at a value for this sweep, e.g. --set-params top_k=7; repeatable",
     )
     curve.add_argument(
-        "--run-name",
+        "--mlflow-run",
         help="name of the MLflow parent run; children are <name>-<param>=<value>",
     )
     curve.add_argument(
@@ -239,25 +245,33 @@ def main(argv: list[str] | None = None) -> int:
         from rag_evaluation.retrieval_eval import format_report, run_tier1
 
         settings = get_settings()
+        params = get_params()
         if args.rerank:
-            settings = replace(settings, rerank_enabled=True)
-        report = run_tier1(entries, settings=settings, k=args.k)
+            params = set_param(params, "agent.rerank_enabled", True)
+        report = run_tier1(entries, settings=settings, params=params, k=args.k)
         print(format_report(report))
         if not args.no_mlflow:
             log_tier1(
-                report, settings, golden_path=args.golden, run_name=args.run_name
+                report,
+                settings,
+                params,
+                golden_path=args.golden,
+                run_name=args.mlflow_run,
             )
         return 0
 
     if args.command == "curve":
+        from rag_config.params import ingest_fingerprint
+
         from rag_evaluation.curve import (
             CurveError,
+            cast_params,
             format_table,
             parse_overrides,
             parse_values,
             run_curve,
         )
-        from rag_evaluation.mlflow_log import log_curve
+        from rag_evaluation.mlflow_log import BaselineError, load_baseline, log_curve
 
         try:
             overrides = parse_overrides(args.overrides)
@@ -265,12 +279,32 @@ def main(argv: list[str] | None = None) -> int:
                 raise CurveError(
                     f"--set-params {args.param} conflicts with --param {args.param}"
                 )
-            # One settings object for both: what is measured and what is logged
-            # must not be able to disagree.
-            settings = replace(get_settings(), **overrides)
+            # Two objects, kept apart: settings is wiring, params is what is
+            # being tuned. Only params moves, and its precedence lowest first is
+            # parameters.yaml, then RAG_* (both inside get_params), then a
+            # registered baseline, then --set-params. The same object is
+            # measured and logged, so the two cannot disagree.
+            settings = get_settings()
+            params = get_params()
+            if args.mlflow_model:
+                raw, summary, fingerprint = load_baseline(args.mlflow_model)
+                for name, value in cast_params(raw).items():
+                    params = set_param(params, f"agent.{name}", value)
+                print(summary, file=sys.stderr)
+                current = ingest_fingerprint()
+                if fingerprint and fingerprint != current:
+                    print(
+                        f"  warning: tuned against index {fingerprint}, "
+                        f"this one is {current}",
+                        file=sys.stderr,
+                    )
+            for name, value in overrides.items():
+                params = set_param(params, f"agent.{name}", value)
             values = parse_values(args.values, args.param)
-            rows = run_curve(entries, args.param, values, settings=settings)
-        except CurveError as exc:
+            rows = run_curve(
+                entries, args.param, values, settings=settings, params=params
+            )
+        except (CurveError, BaselineError) as exc:
             print(f"curve: {exc}", file=sys.stderr)
             return 2
         print(format_table(rows, args.param))
@@ -279,8 +313,9 @@ def main(argv: list[str] | None = None) -> int:
                 rows,
                 args.param,
                 settings,
+                params,
                 golden_path=args.golden,
-                run_name=args.run_name,
+                run_name=args.mlflow_run,
             )
         return 0
 

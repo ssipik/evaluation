@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from rag_agent.retrieval import Chunk, Retriever
-from rag_agent.settings import Settings, get_settings
+from rag_config import Params, set_param
+from rag_agent.settings import Settings, get_params, get_settings
 
 from rag_evaluation.golden import DocRef, Entry
 from rag_evaluation.metrics import METRIC_NAMES, Scores, collapse, mean_scores, score_query
@@ -72,6 +73,7 @@ class Report:
 def run_tier1(
     entries: Sequence[Entry],
     settings: Settings | None = None,
+    params: Params | None = None,
     k: int | None = None,
     rerank: bool | None = None,
     retriever: Retriever | None = None,
@@ -82,11 +84,12 @@ def run_tier1(
     misses would report a labeling gap as a retrieval failure.
     """
     settings = settings or get_settings()
+    params = params or get_params()
     if rerank is not None:
-        settings = replace(settings, rerank_enabled=rerank)
-    k = k or settings.top_k
+        params = set_param(params, "agent.rerank_enabled", rerank)
+    k = k or params.agent.top_k
     owned = retriever is None
-    retriever = retriever or Retriever(settings)
+    retriever = retriever or Retriever(settings, params)
 
     results = []
     try:
@@ -105,7 +108,7 @@ def run_tier1(
             close = getattr(retriever, "close", None)
             if close:
                 close()
-    return Report(results=results, k=k, rerank=settings.rerank_enabled)
+    return Report(results=results, k=k, rerank=params.agent.rerank_enabled)
 
 
 def format_report(report: Report) -> str:

@@ -12,11 +12,12 @@ whole curve costs seconds per value against the standing collection.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
-from dataclasses import fields, replace
+from collections.abc import Mapping, Sequence
+from dataclasses import fields
 from typing import Any
 
-from rag_agent.settings import Settings, get_settings
+from rag_agent.settings import Settings, get_params, get_settings
+from rag_config import AgentParams, Params, set_param
 
 from rag_evaluation.golden import Entry
 from rag_evaluation.metrics import METRIC_NAMES
@@ -24,6 +25,7 @@ from rag_evaluation.retrieval_eval import Report, run_tier1
 
 __all__ = [
     "SWEEPABLE",
+    "cast_params",
     "curve_csv",
     "format_table",
     "make_figures",
@@ -34,23 +36,28 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-# The retrieval shape (block 7) plus the excerpt knobs. Deliberately not every
-# Settings field: urls, model ids and the LLM settings are not tuning knobs, and
-# a typo should say so rather than sweep something meaningless. rerank_top_n is
-# absent on purpose: run_tier1 passes `limit`, which overrides it inside
-# Retriever.search, so sweeping it here would measure nothing.
-SWEEPABLE = (
-    "prefetch_limit",
-    "top_k",
-    "rrf_k",
-    "rrf_dense_weight",
-    "rrf_sparse_weight",
-    "rerank_enabled",
-    "truncate_chunks",
-    "max_excerpt_chars",
+# Every model parameter the agent has, minus the ones tier 1 cannot move.
+# Derived rather than listed, so a knob added to rag-config becomes sweepable
+# without anyone remembering this file — the same "include the section, name the
+# exceptions" rule INGEST_FINGERPRINT_EXCLUDE uses, and for the same reason: a
+# knob wrongly included is an obvious wasted run, one wrongly left out is never
+# noticed.
+NOT_SWEEPABLE = frozenset(
+    {
+        # run_tier1 passes `limit`, which overrides rerank_top_n inside
+        # Retriever.search, so sweeping it would plot a flat line.
+        "rerank_top_n",
+        # Tier 1 is judge-free retrieval scoring and never calls the model.
+        "llm_model",
+        "llm_temperature",
+        "llm_max_tokens",
+    }
+)
+SWEEPABLE = tuple(
+    f.name for f in fields(AgentParams) if f.name not in NOT_SWEEPABLE
 )
 
-_TYPES = {f.name: f.type for f in fields(Settings)}
+_TYPES = {f.name: type(f.default) .__name__ for f in fields(AgentParams)}
 
 
 class CurveError(ValueError):
@@ -117,13 +124,27 @@ def parse_overrides(specs: Sequence[str]) -> dict[str, Any]:
     return out
 
 
+def cast_params(raw: Mapping[str, str]) -> dict[str, Any]:
+    """MLflow params come back as strings; type them against Settings.
+
+    Anything outside SWEEPABLE is dropped — a baseline records the collection
+    and the parameters file it ran against too, and neither is a knob.
+    """
+    return {
+        key: _cast(value, _TYPES.get(key, "int"))
+        for key, value in raw.items()
+        if key in SWEEPABLE
+    }
+
+
 def run_curve(
     entries: Sequence[Entry],
     param: str,
     values: Sequence[Any],
     settings: Settings | None = None,
+    params: Params | None = None,
 ) -> list[tuple[Any, Report]]:
-    """One tier-1 report per value: set the field on a copy of Settings, and
+    """One tier-1 report per value: set the field on a copy of Params, and
     score with that."""
     if param not in SWEEPABLE:
         raise CurveError(
@@ -131,12 +152,14 @@ def run_curve(
         )
     if not values:
         raise CurveError("no values to sweep")
-    base = settings or get_settings()
+    wiring = settings or get_settings()
+    base = params or get_params()
 
     rows: list[tuple[Any, Report]] = []
     for value in values:
         log.info("%s=%s", param, value)
-        rows.append((value, run_tier1(entries, settings=replace(base, **{param: value}))))
+        tuned = set_param(base, f"agent.{param}", value)
+        rows.append((value, run_tier1(entries, settings=wiring, params=tuned)))
     return rows
 
 

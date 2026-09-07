@@ -16,18 +16,22 @@ import contextlib
 import hashlib
 import logging
 import os
+import sys
 import uuid
 from collections.abc import Iterator
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 
 import urllib3
 
 from rag_agent.settings import Settings
-from rag_config import load_params
-from rag_config.params import ingest_fingerprint
+from rag_config import Params, ingest_fingerprint, set_param
+from rag_config.baseline import BaselineError, resolve_baseline
 
 __all__ = [
+    "BaselineError",
+    "load_baseline",
     "log_tier1",
     "log_curve",
     "generation_run",
@@ -100,43 +104,54 @@ def configure(experiment: str) -> None:
     mlflow.set_experiment(experiment)
 
 
-# The knobs a query actually runs with, as opposed to the `agent.*` values
-# read off parameters.yaml.
-IN_FORCE = (
-    "prefetch_limit",
-    "top_k",
-    "rerank_top_n",
-    "rrf_k",
-    "rrf_dense_weight",
-    "rrf_sparse_weight",
-    "rerank_enabled",
-    "truncate_chunks",
-    "max_excerpt_chars",
-)
+def _params(settings: Settings, params: Params) -> dict[str, object]:
+    """Everything a score has to be read against: the model parameters in force,
+    and the config that says which index they ran on.
 
-
-def _params(settings: Settings) -> dict[str, object]:
-    params = load_params()
+    No value appears twice. Params is already the effective set — the file with
+    RAG_*, --set-params and any loaded baseline applied — so there is no second
+    copy of the file's own values to disagree with it.
+    """
     flat: dict[str, object] = {"ingest_fingerprint": ingest_fingerprint(params)}
-    for section in ("parse_chunk", "embed", "agent", "plan", "finalize"):
+    # `agent` is not among them: every one of its keys is a Settings field, so
+    # the file's value would sit next to the run's own under a different name
+    # and only one of the two would be true. The rest describe how the index was
+    # built, which nothing at query time can override and Settings never sees.
+    # The ingest half: what built the index these numbers were measured on.
+    for section in ("parse_chunk", "embed"):
         for key, value in asdict(getattr(params, section)).items():
             flat[f"{section}.{key}"] = value
-    # The settings actually in force. `--set` and the env both move values off
-    # the file's, so every retrieval knob is recorded, not a subset: a run whose
-    # params disagree with what it measured is worse than one missing them.
-    flat.update({f"run.{name}": getattr(settings, name) for name in IN_FORCE})
+    # The query half. `run.` rather than `agent.` because load_baseline reads
+    # these back by that prefix — renaming would orphan every registered
+    # baseline.
+    for key, value in asdict(params.agent).items():
+        flat[f"run.{key}"] = value
     flat.update(
         {
-            "run.qdrant_collection": settings.qdrant_collection,
-            "run.parameters_path": os.environ.get("RAG_PARAMETERS_PATH", "(packaged)"),
+            "settings.qdrant_collection": settings.qdrant_collection,
+            "settings.parameters_path": os.environ.get(
+                "RAG_PARAMETERS_PATH", "(packaged)"
+            ),
         }
     )
     return flat
 
 
+def load_baseline(ref: str) -> tuple[dict[str, str], str, str | None]:
+    """The query knobs of a registered baseline, for `curve --mlflow-model`.
+
+    The registry read itself is `rag_config.baseline`, beside the parameters.yaml
+    a baseline is promoted into; this is the `run.` half of it, which is what a
+    curve starts from.
+    """
+    baseline = resolve_baseline(ref)
+    return baseline.section("run."), baseline.summary, baseline.fingerprint
+
+
 def log_tier1(
     report,
     settings: Settings,
+    params: Params,
     golden_path: str,
     run_name: str | None = None,
     experiment: str = EXPERIMENT,
@@ -153,7 +168,7 @@ def log_tier1(
 
         configure(experiment)
         with mlflow.start_run(run_name=run_name):
-            _log_one_report(report, settings, golden_path)
+            _log_one_report(report, settings, params, golden_path)
     except Exception as exc:
         log.warning("MLflow logging failed, scores are still above: %s", exc)
 
@@ -192,13 +207,39 @@ def _log_golden_dataset(report, golden_path: str) -> None:
     mlflow.log_param("golden_digest", dataset.digest)
 
 
-def _log_one_report(report, settings: Settings, golden_path: str) -> None:
+def _log_parameter_carrier() -> None:
+    """A placeholder model on the run, so the UI offers "Register Model".
+
+    The registry versions models, not runs, and the UI only shows the button on
+    a run that has one — this is that hook and nothing more. The parameters it
+    stands for are the run's own `run.*` params, which is what
+    `promote` and `curve --mlflow-model` read back; the model is never loaded.
+
+    `pip_requirements=[]` skips MLflow's environment capture, which would
+    otherwise export the whole uv.lock into every child run of every sweep.
+    """
+    import mlflow
+
+    class ParameterSet(mlflow.pyfunc.PythonModel):
+        # Type hints only to keep MLflow from warning about signature
+        # inference; nothing calls this.
+        def predict(self, context, model_input: list[str], params=None) -> list[str]:
+            return model_input
+
+    mlflow.pyfunc.log_model(
+        name="rag-retrieval-params", python_model=ParameterSet(), pip_requirements=[]
+    )
+
+
+def _log_one_report(
+    report, settings: Settings, params: Params, golden_path: str
+) -> None:
     """Params, means, the per-attribute split and the per-entry csv of one
     report, into whichever run is active."""
     import mlflow
 
     _log_golden_dataset(report, golden_path)
-    mlflow.log_params(_params(settings))
+    mlflow.log_params(_params(settings, params))
     mlflow.log_params(
         {
             "golden_set": golden_path,
@@ -222,12 +263,14 @@ def _log_one_report(report, settings: Settings, golden_path: str) -> None:
             for name, value in means.items():
                 mlflow.log_metric(f"{attribute}.{group}.{name}", value)
     mlflow.log_text(_per_entry_csv(report), "per_entry.csv")
+    _log_parameter_carrier()
 
 
 def log_curve(
     rows,
     param: str,
     settings: Settings,
+    params: Params,
     golden_path: str,
     run_name: str | None = None,
     experiment: str = EXPERIMENT,
@@ -252,11 +295,11 @@ def log_curve(
         values = [value for value, _ in rows]
         stepped = all(float(v) == int(v) for v in values if isinstance(v, (int, float)))
         deepest = rows[-1][1]
-        with mlflow.start_run(run_name=run_name):
+        with mlflow.start_run(run_name=run_name) as parent:
             _log_golden_dataset(deepest, golden_path)
             mlflow.log_params(
                 {
-                    **_params(settings),
+                    **_params(settings, params),
                     "golden_set": golden_path,
                     "golden_entries": len(deepest.results),
                     "swept_param": param,
@@ -270,14 +313,42 @@ def log_curve(
                 child = f"{run_name}-{param}={value}" if run_name else f"{param}={value}"
                 with mlflow.start_run(run_name=child, nested=True):
                     mlflow.log_param(param, value)
-                    _log_one_report(report, replace(settings, **{param: value}), golden_path)
+                    _log_one_report(
+                        report,
+                        settings,
+                        set_param(params, f"agent.{param}", value),
+                        golden_path,
+                    )
             mlflow.log_text(curve_csv(rows, param), f"{param}_curve.csv")
             figures = make_figures(rows, param)
             for path, figure in figures.items():
                 mlflow.log_figure(figure, path)
+            _save_locally(rows, param, run_name, parent.info.run_id, figures)
             _close_figures(figures.values())
     except Exception as exc:
         log.warning("MLflow logging failed, scores are still above: %s", exc)
+
+
+def _save_locally(rows, param: str, run_name: str | None, run_id: str, figures) -> None:
+    """A copy of the table and the charts on disk, beside what MLflow stores.
+
+    `mlruns/curve/<run name>/<parent run id>/` — the run id because names repeat
+    and only the id says which run a directory belongs to.
+    """
+    from rag_evaluation.curve import curve_csv, format_table
+
+    out = Path("mlruns") / "curve" / (run_name or "unnamed") / run_id
+    try:
+        (out / "plots").mkdir(parents=True, exist_ok=True)
+        (out / f"{param}_curve.txt").write_text(
+            format_table(rows, param) + "\n", encoding="utf-8"
+        )
+        (out / f"{param}_curve.csv").write_text(curve_csv(rows, param), encoding="utf-8")
+        for path, figure in figures.items():
+            figure.savefig(out / path, dpi=110)
+        print(f"  saved to {out}", file=sys.stderr)
+    except OSError as exc:
+        log.warning("could not write %s: %s", out, exc)
 
 
 def _close_figures(figures) -> None:

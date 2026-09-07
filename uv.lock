@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [manifest]
-overrides = [{ name = "rag-config", editable = "../config" }]
+overrides = [{ name = "rag-config", git = "https://bitbucket.org/get-capital/config.git?rev=main" }]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -2737,19 +2737,11 @@ provides-extras = ["dev", "ui"]
 [[package]]
 name = "rag-config"
 version = "0.1.0"
-source = { editable = "../config" }
+source = { git = "https://bitbucket.org/get-capital/config.git?rev=main#6d9c570abee8a1384dea06875098b0bfbc39d948" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "rag-evaluation"
@@ -2787,7 +2779,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rag-agent", editable = "../agent" },
-    { name = "rag-config", editable = "../config" },
+    { name = "rag-config", git = "https://bitbucket.org/get-capital/config.git?rev=main" },
     { name = "seaborn", specifier = ">=0.13" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
