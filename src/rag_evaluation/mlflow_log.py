@@ -26,7 +26,7 @@ from pathlib import Path
 import urllib3
 
 from rag_agent.settings import Settings
-from rag_config import Params, ingest_fingerprint, set_param
+from rag_config import Params, ingest_fingerprint, load_settings, set_param
 from rag_config.baseline import BaselineError, resolve_baseline
 
 __all__ = [
@@ -113,27 +113,22 @@ def _params(settings: Settings, params: Params) -> dict[str, object]:
     copy of the file's own values to disagree with it.
     """
     flat: dict[str, object] = {"ingest_fingerprint": ingest_fingerprint(params)}
-    # `agent` is not among them: every one of its keys is a Settings field, so
-    # the file's value would sit next to the run's own under a different name
-    # and only one of the two would be true. The rest describe how the index was
-    # built, which nothing at query time can override and Settings never sees.
     # The ingest half: what built the index these numbers were measured on.
     for section in ("parse_chunk", "embed"):
         for key, value in asdict(getattr(params, section)).items():
             flat[f"{section}.{key}"] = value
-    # The query half. `run.` rather than `agent.` because load_baseline reads
-    # these back by that prefix — renaming would orphan every registered
-    # baseline.
+    # The query half, under its own section name like the other two.
     for key, value in asdict(params.agent).items():
-        flat[f"run.{key}"] = value
-    flat.update(
-        {
-            "settings.qdrant_collection": settings.qdrant_collection,
-            "settings.parameters_path": os.environ.get(
-                "RAG_PARAMETERS_PATH", "(packaged)"
-            ),
-        }
-    )
+        flat[f"agent.{key}"] = value
+    # Which index the numbers were measured on. The parameters file behind them
+    # is not logged: every value in it is already above, under its own name.
+    flat["settings.qdrant_collection"] = settings.qdrant_collection
+    # The Qdrant field names are config, not parameters — renaming one moves a
+    # vector rather than changing it — but a score still has to say which fields
+    # it was measured over.
+    shared = load_settings()
+    flat["settings.dense_vector"] = shared.dense_vector
+    flat["settings.sparse_vectors"] = shared.sparse_vectors
     return flat
 
 
@@ -141,11 +136,11 @@ def load_baseline(ref: str) -> tuple[dict[str, str], str, str | None]:
     """The query knobs of a registered baseline, for `curve --mlflow-model`.
 
     The registry read itself is `rag_config.baseline`, beside the parameters.yaml
-    a baseline is promoted into; this is the `run.` half of it, which is what a
-    curve starts from.
+    a baseline is promoted into; this is the `agent.` half of it, which is what
+    a curve starts from.
     """
     baseline = resolve_baseline(ref)
-    return baseline.section("run."), baseline.summary, baseline.fingerprint
+    return baseline.section("agent."), baseline.summary, baseline.fingerprint
 
 
 def log_tier1(
@@ -181,6 +176,9 @@ def _log_golden_dataset(report, golden_path: str) -> None:
     answers whether a delta is attributable to the config or to the set having
     moved under it (EVALUATION.md's frozen-set rule).
 
+    The input also carries the file it came from (`source`) and how many entries
+    it holds (`profile.num_rows`), so neither is logged as a parameter.
+
     - sorted by id, so reordering the file is not a new set
     - `tests` left out: it is a note about an entry, not something scored
     """
@@ -204,7 +202,6 @@ def _log_golden_dataset(report, golden_path: str) -> None:
         pd.DataFrame(rows), name="golden_set", source=golden_path
     )
     mlflow.log_input(dataset, context="eval")
-    mlflow.log_param("golden_digest", dataset.digest)
 
 
 def _log_parameter_carrier() -> None:
@@ -212,7 +209,7 @@ def _log_parameter_carrier() -> None:
 
     The registry versions models, not runs, and the UI only shows the button on
     a run that has one — this is that hook and nothing more. The parameters it
-    stands for are the run's own `run.*` params, which is what
+    stands for are the run's own `agent.*` params, which is what
     `promote` and `curve --mlflow-model` read back; the model is never loaded.
 
     `pip_requirements=[]` skips MLflow's environment capture, which would
@@ -240,13 +237,6 @@ def _log_one_report(
 
     _log_golden_dataset(report, golden_path)
     mlflow.log_params(_params(settings, params))
-    mlflow.log_params(
-        {
-            "golden_set": golden_path,
-            "golden_entries": len(report.results),
-            "k": report.k,
-        }
-    )
     mlflow.log_metrics(report.means)
     # Coverage is a metric, not a footnote: it says how much of the set the
     # means are actually over.
@@ -300,8 +290,6 @@ def log_curve(
             mlflow.log_params(
                 {
                     **_params(settings, params),
-                    "golden_set": golden_path,
-                    "golden_entries": len(deepest.results),
                     "swept_param": param,
                     "swept_values": ",".join(str(v) for v in values),
                 }
@@ -311,8 +299,9 @@ def log_curve(
                 for name, mean in report.means.items():
                     mlflow.log_metric(name, mean, step=step)
                 child = f"{run_name}-{param}={value}" if run_name else f"{param}={value}"
+                # No bare `param`: _log_one_report logs the same value as
+                # `agent.<param>`, the name promote and load_baseline read.
                 with mlflow.start_run(run_name=child, nested=True):
-                    mlflow.log_param(param, value)
                     _log_one_report(
                         report,
                         settings,

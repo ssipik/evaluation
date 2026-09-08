@@ -74,7 +74,6 @@ def run_tier1(
     entries: Sequence[Entry],
     settings: Settings | None = None,
     params: Params | None = None,
-    k: int | None = None,
     rerank: bool | None = None,
     retriever: Retriever | None = None,
 ) -> Report:
@@ -87,7 +86,7 @@ def run_tier1(
     params = params or get_params()
     if rerank is not None:
         params = set_param(params, "agent.rerank_enabled", rerank)
-    k = k or params.agent.top_k
+    k = params.agent.top_k
     owned = retriever is None
     retriever = retriever or Retriever(settings, params)
 

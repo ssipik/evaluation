@@ -47,6 +47,9 @@ NOT_SWEEPABLE = frozenset(
         # run_tier1 passes `limit`, which overrides rerank_top_n inside
         # Retriever.search, so sweeping it would plot a flat line.
         "rerank_top_n",
+        # A container serves one reranker, chosen at start (../tei_rerank), so a
+        # value here would be scored against whatever is actually running.
+        "rerank_model",
         # Tier 1 is judge-free retrieval scoring and never calls the model.
         "llm_model",
         "llm_temperature",
@@ -213,7 +216,9 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
             ax=axis,
         )
         label = f"{name}@{depth}"
-        axis.set(xlabel=param, ylabel=label, title=f"{label} vs {param}", ylim=(0, 1.02))
+        # y autoscaled, not pinned to 0-1: a curve whose metrics move within a
+        # narrow band is flat and unreadable on the full range.
+        axis.set(xlabel=param, ylabel=label, title=f"{label} vs {param}")
         if not numeric:
             axis.set_xticks(positions, [str(x) for x in xs])
         elif all(isinstance(x, int) for x in xs):

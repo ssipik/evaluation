@@ -1,6 +1,6 @@
 """Argparse only — the logic lives in the library modules.
 
-    python -m rag_evaluation retrieval --k 10        tier 1, no LLM
+    python -m rag_evaluation retrieval               tier 1, no LLM
     python -m rag_evaluation pool --session-id …     labeling helper
     python -m rag_evaluation agent --ids isin-lookup tiers 2 and 3 (needs a key)
     python -m rag_evaluation generate --n 50         seed entries from the corpus
@@ -36,7 +36,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     tier1 = sub.add_parser("retrieval", help="tier 1: score retrieval, no LLM")
     _common(tier1)
-    tier1.add_argument("--k", type=int, help="results per query (default: top_k)")
     tier1.add_argument("--mlflow-run", help="name of the MLflow run")
     tier1.add_argument(
         "--rerank", action="store_true", help="score with the cross-encoder on"
@@ -179,7 +178,6 @@ def build_parser() -> argparse.ArgumentParser:
     sweep = sub.add_parser("sweep", help="the tuning loop over a sweep file")
     _common(sweep)
     sweep.add_argument("--file", required=True, help="the sweep definition")
-    sweep.add_argument("--k", type=int, help="results per query")
     sweep.add_argument(
         "--reingest",
         action="store_true",
@@ -248,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
         params = get_params()
         if args.rerank:
             params = set_param(params, "agent.rerank_enabled", True)
-        report = run_tier1(entries, settings=settings, params=params, k=args.k)
+        report = run_tier1(entries, settings=settings, params=params)
         print(format_report(report))
         if not args.no_mlflow:
             log_tier1(
@@ -333,7 +331,6 @@ def main(argv: list[str] | None = None) -> int:
             results = run_sweep(
                 load_sweep(args.file),
                 entries,
-                k=args.k,
                 reingest=args.reingest,
                 dry_run=args.dry_run,
             )

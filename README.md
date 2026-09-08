@@ -120,8 +120,8 @@ labels accumulate, so re-pooling shows new work only.
 Needs `../qdrant` and `../tei` up. No API key, no spend, seconds per run.
 
 ```bash
-.venv/bin/python -m rag_evaluation retrieval --k 10
-.venv/bin/python -m rag_evaluation retrieval --k 10 --rerank     # the ablation
+.venv/bin/python -m rag_evaluation retrieval
+.venv/bin/python -m rag_evaluation retrieval --rerank     # the ablation
 .venv/bin/python -m rag_evaluation retrieval --ids isin-lookup
 ```
 
