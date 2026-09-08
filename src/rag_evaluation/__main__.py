@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
 from rag_agent.settings import get_params, get_settings
@@ -186,6 +187,14 @@ def build_parser() -> argparse.ArgumentParser:
     sweep.add_argument(
         "--dry-run", action="store_true", help="write the candidates, score nothing"
     )
+    sweep.add_argument(
+        "--mlflow-run",
+        help="name of the parent MLflow run (default: the sweep file's name); "
+        "children are <name>-<knob>=<value>",
+    )
+    sweep.add_argument(
+        "--no-mlflow", action="store_true", help="print only, log nothing"
+    )
     return parser
 
 
@@ -325,11 +334,18 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if args.command == "sweep":
-        from rag_evaluation.sweep import SweepError, load_sweep, run_sweep
+        from rag_evaluation.mlflow_log import log_sweep
+        from rag_evaluation.sweep import (
+            SweepError,
+            format_summary,
+            load_sweep,
+            run_sweep,
+        )
 
         try:
+            spec = load_sweep(args.file)
             results = run_sweep(
-                load_sweep(args.file),
+                spec,
                 entries,
                 reingest=args.reingest,
                 dry_run=args.dry_run,
@@ -337,15 +353,15 @@ def main(argv: list[str] | None = None) -> int:
         except SweepError as exc:
             print(f"sweep: {exc}", file=sys.stderr)
             return 2
-        print("\n=== sweep summary ===")
-        for candidate, report in results:
-            if report is None or not report.scored:
-                print(f"  {candidate.label:28} (not scored)")
-                continue
-            means = report.means
-            print(
-                f"  {candidate.label:28} recall {means['recall']:.4f}  "
-                f"ndcg {means['ndcg']:.4f}  mrr {means['mrr']:.4f}"
+        print(format_summary(results))
+        if not args.no_mlflow:
+            log_sweep(
+                results,
+                spec,
+                golden_path=args.golden,
+                # The definition file names the sweep: `sweeps/sweep1.yaml` is
+                # the run `sweep1`, and its candidates `sweep1-agent.top_k=5`.
+                run_name=args.mlflow_run or Path(args.file).stem,
             )
         return 0
 

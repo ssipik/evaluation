@@ -34,6 +34,7 @@ __all__ = [
     "load_baseline",
     "log_tier1",
     "log_curve",
+    "log_sweep",
     "generation_run",
     "trace_session",
     "new_session_id",
@@ -168,6 +169,67 @@ def log_tier1(
         log.warning("MLflow logging failed, scores are still above: %s", exc)
 
 
+def log_sweep(
+    results,
+    spec: dict,
+    golden_path: str,
+    run_name: str | None = None,
+    experiment: str = EXPERIMENT,
+) -> None:
+    """One parent run for the sweep, one nested child per candidate.
+    - parent: the sweep definition, plus the summary csv over every candidate
+    - child:  the full report for one candidate, params carrying that knob
+    """
+    if not active() or not results:
+        return
+    try:
+        import mlflow
+
+        from rag_evaluation.sweep import sweep_csv
+
+        configure(experiment)
+        with mlflow.start_run(run_name=run_name) as parent:
+            mlflow.log_params(
+                {
+                    "swept_params": ",".join(spec.get("sweep") or {}),
+                    **{
+                        f"sweep.{knob}": ",".join(str(v) for v in values)
+                        for knob, values in (spec.get("sweep") or {}).items()
+                    },
+                    **{
+                        f"baseline.{knob}": value
+                        for knob, value in (spec.get("baseline") or {}).items()
+                    },
+                }
+            )
+            for scored in results:
+                if scored.report is None:
+                    continue
+                label = scored.candidate.label
+                child = f"{run_name}-{label}" if run_name else label
+                with mlflow.start_run(run_name=child, nested=True):
+                    _log_one_report(
+                        scored.report, scored.settings, scored.params, golden_path
+                    )
+            csv = sweep_csv(results)
+            mlflow.log_text(csv, "summary.csv")
+            _save_sweep_locally(csv, run_name, parent.info.run_id)
+    except Exception as exc:
+        log.warning("MLflow logging failed, scores are still above: %s", exc)
+
+
+def _save_sweep_locally(csv: str, run_name: str | None, run_id: str) -> None:
+    """`mlruns/sweep/<run name>/<parent run id>/summary.csv`, the same layout
+    `_save_locally` writes a curve into and for the same reason: names repeat."""
+    out = Path("mlruns") / "sweep" / (run_name or "unnamed") / run_id
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "summary.csv").write_text(csv, encoding="utf-8")
+        print(f"  saved to {out}", file=sys.stderr)
+    except OSError as exc:
+        log.warning("could not write %s: %s", out, exc)
+
+
 def _log_golden_dataset(report, golden_path: str) -> None:
     """Record which golden set produced these numbers, as a hashed dataset input.
 
@@ -266,10 +328,8 @@ def log_curve(
     experiment: str = EXPERIMENT,
 ) -> None:
     """One parent run for the sweep, one nested child per value.
-
     - parent: the swept values as step-indexed metrics, plus the plots and csv
     - child:  the full report for one value, params carrying that value
-
     Steps are the values themselves when they are whole numbers, so MLflow's
     own chart reads as metric vs parameter; otherwise the index, and the csv
     artifact carries the real values.

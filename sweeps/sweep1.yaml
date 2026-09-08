@@ -1,0 +1,12 @@
+# A query-side sweep: nothing here changes what is stored, so every candidate
+# reuses the collection that is already built and each one scores in seconds.
+#
+# One knob at a time from the baseline (coordinate descent), not a grid: each
+# candidate is interpretable on its own, and the winner becomes the next
+# baseline. Use a grid only where two knobs are suspected to interact.
+baseline:
+
+sweep:
+  agent.top_k: [5, 10, 20, 30]
+  agent.rrf_dense_weight: [0.5, 1.0, 2.0]
+  agent.rrf_k: [2, 10, 60]

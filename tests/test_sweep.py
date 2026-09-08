@@ -41,7 +41,7 @@ class TestCandidates:
         for candidate in produced[1:]:
             differing = [
                 section
-                for section in ("plan", "parse_chunk", "embed", "finalize", "agent")
+                for section in ("parse_chunk", "embed", "agent")
                 if getattr(candidate.params, section) != getattr(baseline, section)
             ]
             assert len(differing) == 1
@@ -90,7 +90,8 @@ class TestWrittenFile:
         monkeypatch.setattr(sweep, "RUNS_DIR", tmp_path)
         path = write_candidate(next(iter(candidates(SPEC))))
         body = yaml.safe_load(path.read_text())
-        assert set(body) >= {"version", "plan", "parse_chunk", "embed", "finalize", "agent"}
+        assert set(body) >= {"version", "parse_chunk", "embed", "agent"}
+        assert "settings" not in body  # config lives in its own file beside it
         assert body["parse_chunk"]["chunk_size"] == load_params().parse_chunk.chunk_size
 
     def test_the_collection_can_be_pinned_to_an_existing_index(self, tmp_path, monkeypatch):
@@ -98,7 +99,8 @@ class TestWrittenFile:
 
         monkeypatch.setattr(sweep, "RUNS_DIR", tmp_path)
         path = write_candidate(next(iter(candidates(SPEC))), collection="rag_chunks")
-        assert yaml.safe_load(path.read_text())["embed"]["qdrant_collection"] == "rag_chunks"
+        beside = yaml.safe_load((path.parent / "settings.yaml").read_text())
+        assert beside["qdrant_collection"] == "rag_chunks"
 
 
 class TestGuard:

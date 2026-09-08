@@ -1,0 +1,6 @@
+# Smallest useful sweep: retrieval depth only. Nothing here changes the index,
+# so every candidate reuses the collection already built.
+baseline:
+
+sweep:
+  agent.top_k: [3, 5, 10, 20]
