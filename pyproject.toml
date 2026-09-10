@@ -36,11 +36,16 @@ dependencies = [
     # because the point is a model from a third family with its own settings —
     # see generate.py.
     "openai>=2.0",
+    # `search` drives the TPE sampler and its SQLite study storage. Only the
+    # core: the plots come from optuna.visualization.matplotlib, which needs
+    # nothing beyond matplotlib, already pinned above.
+    "optuna>=4.0",
     # `aggregate` compares every summary point with every other, which is one
     # matrix product rather than 48k Python calls — see _similarity_matrix.
     # Arrives transitively through mlflow and llama-index anyway; declared
     # because this module imports it directly.
     "numpy>=2.0",
+    "jupyter>=1.1.1",
 ]
 
 [project.optional-dependencies]
