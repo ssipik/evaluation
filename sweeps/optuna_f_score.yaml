@@ -1,0 +1,31 @@
+# The same question as knee1/knee2 — can the fusion knobs reach depth's recall
+# without paying depth's precision — asked with a curve instead of a hard line.
+#
+# A floor says "recall must clear 0.975, then maximise precision", and needs the
+# knee to be known before the study runs. An f_score says "recall is worth beta
+# squared times what precision is worth" and lets the trade decide the depth on
+# its own. Use this one when the saturation point is not read off a curve yet;
+# use knee1's floor when it is.
+baseline:
+  agent.rerank_enabled: false
+  agent.rrf_dense_weight: 1.0
+
+search:
+  agent.top_k: {low: 4, high: 30}
+  agent.rrf_k: {low: 1, high: 60}
+  agent.rrf_sparse_weight: {low: 0.1, high: 3.0}
+
+# The first metric is the favoured one — beta is how much more it weighs.
+#
+# beta has to be large at this operating point. Recall runs near 0.98 and
+# precision near 0.2-0.3, and the harmonic mean is pulled toward whichever is
+# smaller: F-1 here scores 0.33 and its gradient points at precision hard enough
+# to drive top_k to 1. beta 5 puts the winner on top_k 7, the same depth
+# `floor: 0.975` picks. Below 3 the study answers a different question.
+#
+# `floor` is a ladder thing and is refused here — the two are alternative
+# answers to the same question, not settings to combine.
+objective:
+  type: f_score
+  metrics: [recall, precision]
+  beta: 10.0

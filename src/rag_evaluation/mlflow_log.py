@@ -35,6 +35,7 @@ __all__ = [
     "log_tier1",
     "log_curve",
     "log_sweep",
+    "log_search",
     "generation_run",
     "trace_session",
     "new_session_id",
@@ -216,6 +217,100 @@ def log_sweep(
             _save_sweep_locally(csv, run_name, parent.info.run_id)
     except Exception as exc:
         log.warning("MLflow logging failed, scores are still above: %s", exc)
+
+
+def log_search(
+    results,
+    study,
+    objective,
+    spec: dict,
+    settings: Settings,
+    golden_path: str,
+    run_name: str | None = None,
+    experiment: str = EXPERIMENT,
+) -> None:
+    """One parent run for the study, one nested child per trial.
+
+    - parent: the search space, the winner, and the study's plots and csv
+    - child:  the full report for one trial, params carrying that trial's knobs
+
+    `log_curve`'s shape. The parent carries no step-indexed metrics, because a
+    joint search has no single x axis to index them by — its equivalent is
+    Optuna's own history and contour plots.
+    """
+    if not active() or not results:
+        return
+    try:
+        import mlflow
+
+        from rag_evaluation.search import best, make_figures, search_csv
+
+        configure(experiment)
+        with mlflow.start_run(run_name=run_name) as parent:
+            mlflow.log_params(
+                {
+                    # Resolved, not what the file asked for: `floor: baseline`
+                    # is a number only once run_search has scored the baseline.
+                    **objective.params,
+                    "trials": len(results),
+                    **{
+                        f"search.{knob}": str(space)
+                        for knob, space in (spec.get("search") or {}).items()
+                    },
+                    **{
+                        f"baseline.{knob}": value
+                        for knob, value in (spec.get("baseline") or {}).items()
+                    },
+                }
+            )
+            for trial in results:
+                if trial.report is None:
+                    continue
+                child = (
+                    f"{run_name}-{trial.label}" if run_name else trial.label
+                )
+                with mlflow.start_run(run_name=child, nested=True):
+                    mlflow.log_metric("objective", trial.value)
+                    _log_one_report(trial.report, settings, trial.params, golden_path)
+            winner = best(results, objective)
+            if winner:
+                with _best_effort("winner"):
+                    mlflow.log_params(
+                        {f"best.{k}": v for k, v in winner.knobs.items()}
+                        | {"best.trial": winner.number}
+                    )
+                    mlflow.log_metrics(winner.report.means)
+            csv = search_csv(results)
+            mlflow.log_text(csv, "trials.csv")
+            figures = make_figures(study)
+            for path, figure in figures.items():
+                mlflow.log_figure(figure, path)
+            _save_search_locally(csv, run_name, parent.info.run_id, figures)
+            _close_figures(figures.values())
+    except Exception as exc:
+        # The type, not only the message: a NameError here is a bug in this
+        # module and reads nothing like an unreachable tracking server.
+        log.warning(
+            "MLflow logging failed (%s), scores are still above: %s",
+            type(exc).__name__,
+            exc,
+        )
+
+
+def _save_search_locally(
+    csv: str, run_name: str | None, run_id: str, figures
+) -> None:
+    """`mlruns/search/<run name>/<parent run id>/`, the layout `_save_locally`
+    writes a curve into and for the same reason: names repeat."""
+    out = Path("mlruns") / "search" / (run_name or "unnamed") / run_id
+    try:
+        (out / "plots").mkdir(parents=True, exist_ok=True)
+        (out / "trials.csv").write_text(csv, encoding="utf-8")
+        for path, figure in figures.items():
+            figure.savefig(out / path, dpi=110)
+        print(f"  saved to {out}", file=sys.stderr)
+    except OSError as exc:
+        log.warning("could not write %s: %s", out, exc)
 
 
 def _save_sweep_locally(csv: str, run_name: str | None, run_id: str) -> None:

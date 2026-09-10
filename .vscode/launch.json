@@ -57,10 +57,9 @@
             "justMyCode": false,
             "args": [
                 "curve",
-                // "--param", "top_k", "--values", "1:20",
-                // "--mlflow-run", "tune_top_k",
-                // "--param", "rrf_k", "--values", "1:20",
-                // // "--set-params", "top_k=7",
+                "--param", "top_k", "--values", "1:35",
+                "--mlflow-run", "tune_top_k",
+                // "--param", "rrf_k", "--values", "1:35",
                 // "--mlflow-model", "rag-retrieval-params@optimal_top_k",
                 // "--mlflow-run", "tune_rrf_k",
                 // "--param", "rrf_dense_weight", "--values", "0:2:0.1",
@@ -69,9 +68,9 @@
                 // "--param", "rrf_sparse_weight", "--values", "0:2:0.1",
                 // "--mlflow-model", "rag-retrieval-params@optimal_rrf_dense_weight",
                 // "--mlflow-run", "tune_rrf_sparse_weight",
-                "--param", "rerank_enabled", "--values", "true,false",
-                "--mlflow-model", "rag-retrieval-params@optimal_rrf_sparse_weight",
-                "--mlflow-run", "tune_rerank_enabled",
+                // "--param", "rerank_enabled", "--values", "true,false",
+                // "--mlflow-model", "rag-retrieval-params@optimal_rrf_sparse_weight",
+                // "--mlflow-run", "tune_rerank_enabled",
             ],
         },
         {
@@ -86,6 +85,23 @@
             "args": [
                 "sweep",
                 "--file", "sweeps/sweep1.yaml"
+            ],
+        },
+        {
+            "name": "rag_evaluation - search",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "rag_evaluation",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "search",
+                "--file", "sweeps/optuna_f_score.yaml",
+                "--trials", "50",
+                "--seed", "42",
+                "--study", "optuna_f_score-1"
             ],
         },
         {

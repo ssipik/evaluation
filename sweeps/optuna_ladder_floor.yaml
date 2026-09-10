@@ -1,0 +1,36 @@
+# The question this study answers: can tuning the fusion knobs reach the recall
+# that depth buys, without paying depth's precision?
+#
+# The tune_top_k curve settled top_k on its own: recall saturates at 0.9788 by
+# top_k 7 and at 0.9841 by 9, and every step past that costs precision for a
+# fraction of one question — 9 to 20 costs 0.13 of precision for no recall at
+# all. So the range here stops at 12; everything above it is known-dominated and
+# a trial spent there is a trial not spent on the fusion knobs.
+#
+# rrf_dense_weight is held, not searched: Qdrant's RRF scores
+# `sum(w_i / (k + rank_i))`, so scaling every weight by a constant leaves the
+# ranking identical. Only the ratio moves anything, and rrf_sparse_weight
+# carries all of it. Searching both would leave a flat direction for TPE to
+# waste trials on.
+baseline:
+  agent.rerank_enabled: false
+  agent.rrf_dense_weight: 1.0
+
+search:
+  agent.top_k: {low: 4, high: 30}
+  agent.rrf_k: {low: 1, high: 60}
+  agent.rrf_sparse_weight: {low: 0.1, high: 3.0}
+
+# Above the floor precision decides, which is what settles top_k: it is the only
+# metric here that falls as depth grows. ndcg is left out entirely — it never
+# decreases in top_k either, so it cannot help choose a depth, and below
+# precision it only breaks ties that never occur.
+#
+# The floor is read off the curve: it clears top_k 7 (0.9788) and excludes 6
+# (0.9630). Set between the plateaus rather than on one — the means are floats.
+# `floor: baseline` instead, for a knob whose saturation point is not plotted
+# yet, makes it whatever the configuration in force already scores.
+objective:
+  type: ladder
+  metrics: [recall, precision]
+  floor: 0.975

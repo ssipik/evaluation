@@ -176,6 +176,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-mlflow", action="store_true", help="print only, log nothing"
     )
 
+    search = sub.add_parser(
+        "search",
+        help="tune several query knobs jointly, Optuna choosing where to look",
+    )
+    _common(search)
+    search.add_argument("--file", required=True, help="the search space")
+    search.add_argument(
+        "--trials", type=int, default=30, help="how many trials to run (default 30)"
+    )
+    search.add_argument(
+        "--study",
+        help="study name; resumes an existing one under runs/optuna "
+        "(default: the search file's name)",
+    )
+    search.add_argument(
+        "--seed", type=int, help="sampler seed, for a reproducible study"
+    )
+    search.add_argument(
+        "--mlflow-run",
+        help="name of the parent MLflow run (default: the search file's name); "
+        "children are <name>-trial-0007",
+    )
+    search.add_argument(
+        "--no-mlflow", action="store_true", help="print only, log nothing"
+    )
+
     sweep = sub.add_parser("sweep", help="the tuning loop over a sweep file")
     _common(sweep)
     sweep.add_argument("--file", required=True, help="the sweep definition")
@@ -332,6 +358,41 @@ def main(argv: list[str] | None = None) -> int:
         return run_judges(
             entries, judge_model=args.judge_model, rerank=args.rerank
         )
+
+    if args.command == "search":
+        from rag_evaluation.mlflow_log import log_search
+        from rag_evaluation.search import (
+            SearchError,
+            format_search,
+            load_search,
+            run_search,
+        )
+
+        name = args.study or Path(args.file).stem
+        try:
+            spec = load_search(args.file)
+            results, study, objective = run_search(
+                entries,
+                spec,
+                n_trials=args.trials,
+                study_name=name,
+                seed=args.seed,
+            )
+        except SearchError as exc:
+            print(f"search: {exc}", file=sys.stderr)
+            return 2
+        print(format_search(results, objective))
+        if not args.no_mlflow:
+            log_search(
+                results,
+                study,
+                objective,
+                spec,
+                get_settings(),
+                golden_path=args.golden,
+                run_name=args.mlflow_run or name,
+            )
+        return 0
 
     if args.command == "sweep":
         from rag_evaluation.mlflow_log import log_sweep

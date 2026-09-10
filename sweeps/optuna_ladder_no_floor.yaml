@@ -1,0 +1,43 @@
+# The question this study answers: can tuning the fusion knobs reach the recall
+# that depth buys, without paying depth's precision?
+#
+# The tune_top_k curve settled top_k on its own: recall saturates at 0.9788 by
+# top_k 7 and at 0.9841 by 9, and every step past that costs precision for a
+# fraction of one question — 9 to 20 costs 0.13 of precision for no recall at
+# all. So the range here stops at 12; everything above it is known-dominated and
+# a trial spent there is a trial not spent on the fusion knobs.
+#
+# rrf_dense_weight is held, not searched: Qdrant's RRF scores
+# `sum(w_i / (k + rank_i))`, so scaling every weight by a constant leaves the
+# ranking identical. Only the ratio moves anything, and rrf_sparse_weight
+# carries all of it. Searching both would leave a flat direction for TPE to
+# waste trials on.
+baseline:
+  agent.rerank_enabled: false
+  agent.rrf_dense_weight: 1.0
+
+search:
+  agent.top_k: {low: 4, high: 30}
+  agent.rrf_k: {low: 1, high: 60}
+  agent.rrf_sparse_weight: {low: 0.1, high: 3.0}
+
+# No floor, which makes this the control for optuna_ladder_floor: recall decides
+# outright and precision only breaks its exact ties. Recall is non-decreasing in
+# top_k, so the winner here is the deepest trial that still gains a fraction of
+# one question — which is the answer the floor exists to override.
+#
+# ndcg is left out entirely — it never decreases in top_k either, so it cannot
+# help choose a depth, and below precision it only breaks ties that never occur.
+#
+# Without a floor `tolerance` is what makes recall stop deciding: every trial
+# within it of the best recall counts as tied, and precision picks among them.
+# Where a floor is a fixed number read off a curve, this is relative to whatever
+# the study's best trial turned out to be — so the two are refused together.
+#
+# 0 below is the sampler's own ordering, exact ties only. Set it from the noise
+# of the golden set (a bootstrap CI over the questions), not from the
+# quantization: 0.005 is roughly a third of one question at N=63.
+objective:
+  type: ladder
+  metrics: [recall, precision]
+  tolerance: 0.002
