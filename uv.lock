@@ -3587,7 +3587,7 @@ provides-extras = ["dev", "ui"]
 [[package]]
 name = "rag-config"
 version = "0.1.0"
-source = { git = "https://bitbucket.org/get-capital/config.git?rev=main#97fddbbc4237fc570ffa0d251b7fb03a25039096" }
+source = { git = "https://bitbucket.org/get-capital/config.git?rev=main#47f1b4e6312350bce8fbe7d14525e49bb538f4db" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },

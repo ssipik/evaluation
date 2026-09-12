@@ -19,8 +19,22 @@ Two things differ, both because reranking is a different kind of work:
 
 This model has no ONNX export, so TEI falls back to Candle (see
 ../tei_rerank/README.md), which on a laptop costs seconds per passage. A default
-run against the local reranker therefore takes minutes; `--skip-local` measures
-the cluster alone in about 15 seconds.
+run against the local reranker therefore takes many minutes; `--skip-local`
+measures the cluster alone.
+
+**Passage length dominates, superlinearly** — a cross-encoder's attention is
+quadratic in sequence length, so `--chunk-chars` moves the result far more than
+`--passages` does. Measured on the cluster, 8 passages:
+
+    chars  tokens  per passage  vs 1000ch
+     1000     239      0.59 s       1.0x
+     2000     476      1.49 s       2.5x
+     4266    1013      4.34 s       7.4x
+
+The default is 4000, near the corpus p95 of 4266, because that is what actually
+governs whether a rerank finishes inside a timeout. An earlier 1000-char default
+reported 0.62 s per passage and made reranking look ~7x cheaper than a real
+candidate set turned out to be.
 
 The corpora are imported from bench_tei_embed so both benchmarks score the same
 text. Running this file puts tests/ on sys.path, so the plain import works from
@@ -123,8 +137,8 @@ def main() -> int:
     p.add_argument("--cluster", default=os.environ.get("BENCH_RERANK_CLUSTER", DEFAULT_ENDPOINTS["cluster"]))
     p.add_argument("--passages", type=int, default=TOP_K,
                    help=f"candidates per query (default {TOP_K} = top_k; max {MAX_PASSAGES})")
-    p.add_argument("--chunk-chars", type=int, default=1000,
-                   help="characters per passage (default 1000, near the corpus mean of 957)")
+    p.add_argument("--chunk-chars", type=int, default=4000,
+                   help="characters per passage (default 4000, near the corpus p95 of 4266)")
     p.add_argument("--language", choices=sorted(CORPORA), default="mixed",
                    help="corpus language (default mixed: the golden set is ~57%% en, 43%% de)")
     p.add_argument("--repeat", type=int, default=1, help="measured rounds per endpoint")

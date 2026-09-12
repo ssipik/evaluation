@@ -98,10 +98,10 @@
             "justMyCode": false,
             "args": [
                 "search",
-                "--file", "sweeps/optuna_f_score.yaml",
-                "--trials", "50",
+                "--file", "sweeps/optuna_f_score_rerank.yaml",
+                "--trials", "1",
                 "--seed", "42",
-                "--study", "optuna_f_score-1"
+                "--study", "optuna_f_score_rerank-1"
             ],
         },
         {

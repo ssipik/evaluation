@@ -29,6 +29,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import yaml
@@ -104,6 +105,10 @@ class Evaluated:
     params: Params
     report: Report | None
     value: float
+    # Wall time of the trial's scoring pass. Worth recording because trials are
+    # not equal in cost: with reranking on, one is minutes rather than seconds,
+    # and a study's remaining runtime cannot be guessed from the trial count.
+    seconds: float = 0.0
     # False for the seeded baseline when parameters.yaml holds a value the file
     # did not ask for. Marked in the table so a row with an out-of-range value is
     # explained; it competes on the objective like any other trial.
@@ -552,10 +557,15 @@ def run_search(
             value = _suggest(trial, dotted, choices)
             knobs[dotted] = value
             tuned = _set(tuned, dotted, value)
+        started = perf_counter()
         report = run_tier1(entries, settings=wiring, params=tuned)
+        seconds = perf_counter() - started
         means = report.means
         for name in METRIC_NAMES:
             trial.set_user_attr(name, means.get(name, 0.0))
+        # On the trial too, so the sqlite study carries it and a resumed or
+        # re-read study is not missing the cost half of the picture.
+        trial.set_user_attr("seconds", seconds)
         value = goal.value(means)
         results.append(
             Evaluated(
@@ -564,12 +574,16 @@ def run_search(
                 tuned,
                 report,
                 value,
+                seconds=seconds,
                 in_space=in_space(knobs, space),
             )
         )
-        print(f"  trial {trial.number:>4}  {value:.6f}  " + "  ".join(
-            f"{n}={means.get(n, 0.0):.4f}" for n in goal.metrics
-        ))
+        elapsed = sum(r.seconds for r in results)
+        print(
+            f"  trial {trial.number:>4}  {value:.6f}  "
+            + "  ".join(f"{n}={means.get(n, 0.0):.4f}" for n in goal.metrics)
+            + f"  [{_hms(seconds)}, total {_hms(elapsed)}]"
+        )
         return value
 
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -590,7 +604,25 @@ def run_search(
     # On the study as well as in the returned objective, so a resumed study
     # still carries the number a `baseline` floor resolved to.
     study.set_user_attr("floor", goal.floor)
+    # Wall clock around optimize, not the sum of the trials: the difference is
+    # the sampler, the setup each trial repeats, and anything else outside
+    # run_tier1. Accumulated on the study so a resumed one keeps its earlier
+    # runtime instead of reporting only this session's.
+    started = perf_counter()
     study.optimize(score, n_trials=n_trials)
+    wall = perf_counter() - started
+    study.set_user_attr(
+        "wall_seconds", float(study.user_attrs.get("wall_seconds", 0.0)) + wall
+    )
+    scoring = sum(r.seconds for r in results)
+    log.info(
+        "study %s: %d trials in %s wall (%s scoring, %s overhead)",
+        study_name,
+        len(results),
+        _hms(wall),
+        _hms(scoring),
+        _hms(max(0.0, wall - scoring)),
+    )
     return results, study, goal
 
 
@@ -643,6 +675,15 @@ def _cell(value: Any) -> str:
     return f"{value:.4g}" if isinstance(value, float) else str(value)
 
 
+def _hms(seconds: float) -> str:
+    """Compact duration: seconds under a minute, else m:ss, else h:mm:ss."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m{int(seconds % 60):02d}s"
+    return f"{int(seconds // 3600)}h{int(seconds % 3600 // 60):02d}m"
+
+
 def _table(
     results: Sequence[Evaluated], title: str, knobs: Sequence[str], width: int
 ) -> list[str]:
@@ -652,7 +693,8 @@ def _table(
         f"  {'trial':>10}  {'objective':>10}  "
         + "  ".join(f"{k.partition('.')[2]:>{min(width, 16)}}" for k in knobs)
         + "  "
-        + "  ".join(f"{n:>10}" for n in METRIC_NAMES),
+        + "  ".join(f"{n:>10}" for n in METRIC_NAMES)
+        + f"  {'time':>8}",
     ]
     for r in results:
         # The number the sampler ranked on, beside the metrics it was built
@@ -665,7 +707,12 @@ def _table(
             lines.append(row + f"  {'(not scored)':>10}")
             continue
         means = r.report.means
-        lines.append(row + "  " + "  ".join(f"{means[n]:>10.4f}" for n in METRIC_NAMES))
+        lines.append(
+            row
+            + "  "
+            + "  ".join(f"{means[n]:>10.4f}" for n in METRIC_NAMES)
+            + f"  {_hms(r.seconds):>8}"
+        )
     return lines
 
 
@@ -706,6 +753,13 @@ def format_search(results: Sequence[Evaluated], objective: Objective) -> str:
             "\n  * outside the declared search space (the seeded baseline), "
             "competing on the objective like any other trial"
         )
+    total = sum(r.seconds for r in results)
+    if total:
+        lines.append(
+            f"\n  {len(results)} trials, {_hms(total)} scoring "
+            f"(mean {_hms(total / len(results))}, "
+            f"slowest {_hms(max(r.seconds for r in results))})"
+        )
     winner = best(results, objective)
     if winner:
         lines.append(
@@ -739,13 +793,13 @@ def search_csv(results: Sequence[Evaluated]) -> str:
         + ",".join(knobs)
         + ","
         + ",".join(METRIC_NAMES)
-        + ",scored_entries,coverage"
+        + ",scored_entries,coverage,seconds"
     )
     lines = [header]
     for r in results:
         head = f"{r.number},{r.value:.8f}," + ",".join(str(r.knobs[k]) for k in knobs)
         if r.report is None or not r.report.scored:
-            lines.append(head + "," * (len(METRIC_NAMES) + 2))
+            lines.append(head + "," * (len(METRIC_NAMES) + 2) + f",{r.seconds:.2f}")
             continue
         means = r.report.means
         coverage = (
@@ -755,7 +809,7 @@ def search_csv(results: Sequence[Evaluated]) -> str:
             head
             + ","
             + ",".join(f"{means.get(n, 0.0):.6f}" for n in METRIC_NAMES)
-            + f",{len(r.report.scored)},{coverage:.4f}"
+            + f",{len(r.report.scored)},{coverage:.4f},{r.seconds:.2f}"
         )
     return "\n".join(lines) + "\n"
 

@@ -86,14 +86,22 @@ def run_tier1(
     params = params or get_params()
     if rerank is not None:
         params = set_param(params, "agent.rerank_enabled", rerank)
-    k = params.agent.top_k
+    # No limit is passed: search reads top_k and rerank_top_n from params itself,
+    # so anything given here could only cap what it already decided. Tier 1 used
+    # to pass top_k, which won over rerank_top_n and made it score top_k
+    # reordered chunks — a configuration the agent never serves.
+    #
+    # `k` is the depth the report labels itself with: what comes back is
+    # rerank_top_n when reranking, top_k otherwise.
+    rerank_on = params.agent.rerank_enabled
+    k = params.agent.rerank_top_n if rerank_on else params.agent.top_k
     owned = retriever is None
     retriever = retriever or Retriever(settings, params)
 
     results = []
     try:
         for entry in entries:
-            chunks = retriever.search(entry.question, limit=k)
+            chunks = retriever.search(entry.question)
             refs = [chunk_ref(c) for c in chunks]
             ranking = collapse(refs)
             scores = (

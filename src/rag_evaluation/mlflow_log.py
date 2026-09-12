@@ -271,6 +271,10 @@ def log_search(
                 )
                 with mlflow.start_run(run_name=child, nested=True):
                     mlflow.log_metric("objective", trial.value)
+                    # Cost beside the score: with reranking on, trials differ by
+                    # orders of magnitude and the comparison is meaningless
+                    # without it.
+                    mlflow.log_metric("seconds", trial.seconds)
                     _log_one_report(trial.report, settings, trial.params, golden_path)
             winner = best(results, objective)
             if winner:
@@ -280,6 +284,10 @@ def log_search(
                         | {"best.trial": winner.number}
                     )
                     mlflow.log_metrics(winner.report.means)
+            wall = float(study.user_attrs.get("wall_seconds", 0.0))
+            if wall:
+                mlflow.log_metric("wall_seconds", wall)
+                mlflow.log_metric("scoring_seconds", sum(r.seconds for r in results))
             csv = search_csv(results)
             mlflow.log_text(csv, "trials.csv")
             figures = make_figures(study)

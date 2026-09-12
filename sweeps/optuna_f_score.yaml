@@ -11,6 +11,7 @@ baseline:
   agent.rrf_dense_weight: 1.0
 
 search:
+  agent.prefetch_limit: {low: 30, high: 100}
   agent.top_k: {low: 4, high: 30}
   agent.rrf_k: {low: 1, high: 60}
   agent.rrf_sparse_weight: {low: 0.1, high: 3.0}
