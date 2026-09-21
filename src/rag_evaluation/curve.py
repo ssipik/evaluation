@@ -1,30 +1,50 @@
-"""Score tier 1 across a range of one query parameter, and plot every metric.
+"""Score tier 1 across a range of one parameter, and plot every metric.
 
 One knob, many values, one MLflow parent run with a child per value. Same shape
 as sweep.py's inner loop, but driven from the command line and it draws the
 curves — the question it answers is "where does this parameter stop paying",
 which a single number cannot show.
 
-Query-time parameters only: everything here changes without a re-ingest, so a
-whole curve costs seconds per value against the standing collection.
+`run_curve` is `sweep.run_sweep` over one knob — same candidates, same
+fingerprint routing, same snapshot, ledger and stages when `--reingest` builds.
+Read the two side by side; the docstring of `run_curve` lists every difference.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+import os
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import fields
 from typing import Any
 
-from rag_agent.settings import Settings, get_params, get_settings
-from rag_config import AgentParams, Params, set_param
+from rag_agent.settings import get_params, get_settings
+from rag_config import (
+    AgentParams,
+    EmbedParams,
+    Params,
+    ParseChunkParams,
+    ingest_fingerprint,
+    load_params,
+)
 
 from rag_evaluation.golden import Entry
 from rag_evaluation.metrics import METRIC_NAMES
 from rag_evaluation.retrieval_eval import Report, run_tier1
+from rag_evaluation.sweep import (
+    Candidate,
+    Scored,
+    _set,
+    build,
+    collection_exists,
+    frozen_snapshot,
+    write_candidate,
+)
 
 __all__ = [
+    "INGEST_SWEEPABLE",
     "SWEEPABLE",
+    "candidates",
     "cast_params",
     "curve_csv",
     "format_table",
@@ -56,11 +76,31 @@ NOT_SWEEPABLE = frozenset(
         "llm_max_tokens",
     }
 )
+# Spelled `section.field` like everywhere else — sweep files, set_param, the
+# MLflow params — so one name means one knob in every command.
 SWEEPABLE = tuple(
-    f.name for f in fields(AgentParams) if f.name not in NOT_SWEEPABLE
+    f"agent.{f.name}" for f in fields(AgentParams) if f.name not in NOT_SWEEPABLE
 )
 
-_TYPES = {f.name: type(f.default) .__name__ for f in fields(AgentParams)}
+# The index-shaping knobs a curve can move: the numeric fields of the two
+# fingerprinted sections. Model names and the sparse-model map
+# are left out — no value list on a command line spells them.
+INGEST_SWEEPABLE = tuple(
+    f"{section}.{f.name}"
+    for section, cls in (("parse_chunk", ParseChunkParams), ("embed", EmbedParams))
+    for f in fields(cls)
+    if isinstance(f.default, (int, float)) and not isinstance(f.default, bool)
+)
+
+_TYPES = {
+    f"{section}.{f.name}": type(f.default).__name__
+    for section, cls in (
+        ("agent", AgentParams),
+        ("parse_chunk", ParseChunkParams),
+        ("embed", EmbedParams),
+    )
+    for f in fields(cls)
+}
 
 
 class CurveError(ValueError):
@@ -119,51 +159,125 @@ def parse_overrides(specs: Sequence[str]) -> dict[str, Any]:
         name = name.strip()
         if not sep:
             raise CurveError(f"{spec!r}: expected name=value")
-        if name not in SWEEPABLE:
+        if name not in SWEEPABLE and name not in INGEST_SWEEPABLE:
             raise CurveError(
-                f"{name!r} cannot be set — one of {', '.join(sorted(SWEEPABLE))}"
+                f"{name!r} cannot be set — one of "
+                f"{', '.join(sorted(SWEEPABLE + INGEST_SWEEPABLE))}"
             )
         out[name] = _cast(raw, _TYPES.get(name, "int"))
     return out
 
 
 def cast_params(raw: Mapping[str, str]) -> dict[str, Any]:
-    """MLflow params come back as strings; type them against Settings.
+    """A baseline's `agent.` section, typed, under the names --param uses.
 
-    Anything outside SWEEPABLE is dropped — a baseline records the collection
-    and the parameters file it ran against too, and neither is a knob.
+    MLflow params come back as strings, and `Baseline.section` strips the
+    prefix. Anything outside SWEEPABLE is dropped — a baseline records the
+    collection and the parameters file it ran against too, and neither is a knob.
     """
     return {
-        key: _cast(value, _TYPES.get(key, "int"))
+        f"agent.{key}": _cast(value, _TYPES[f"agent.{key}"])
         for key, value in raw.items()
-        if key in SWEEPABLE
+        if f"agent.{key}" in SWEEPABLE
     }
 
 
+def candidates(
+    param: str, values: Sequence[Any], baseline: Params | None = None
+) -> Iterator[Candidate]:
+    """One candidate per value, each changing `param` from the baseline — a
+    sweep file's `sweep:` list for one knob, without the baseline candidate."""
+    if param not in SWEEPABLE and param not in INGEST_SWEEPABLE:
+        raise CurveError(
+            f"{param!r} is not sweepable — one of "
+            f"{', '.join(sorted(SWEEPABLE + INGEST_SWEEPABLE))}"
+        )
+    params = baseline or load_params()
+    for value in values:
+        yield Candidate(
+            label=f"{param}={value}",
+            knob=param,
+            value=value,
+            params=_set(params, param, value),
+            changes=((param, value),),
+        )
+
+
 def run_curve(
-    entries: Sequence[Entry],
     param: str,
     values: Sequence[Any],
-    settings: Settings | None = None,
-    params: Params | None = None,
-) -> list[tuple[Any, Report]]:
-    """One tier-1 report per value: set the field on a copy of Params, and
-    score with that."""
-    if param not in SWEEPABLE:
-        raise CurveError(
-            f"{param!r} is not sweepable — one of {', '.join(sorted(SWEEPABLE))}"
-        )
-    if not values:
-        raise CurveError("no values to sweep")
-    wiring = settings or get_settings()
-    base = params or get_params()
+    entries: list[Entry],
+    reingest: bool = False,
+    dry_run: bool = False,
+    overwrite_frozen: bool = False,
+    baseline: Params | None = None,
+    ingest_spec: dict | None = None,
+) -> list[Scored]:
+    """Every value, scored on tier 1 — `sweep.run_sweep` over one knob.
 
-    rows: list[tuple[Any, Report]] = []
-    for value in values:
-        log.info("%s=%s", param, value)
-        tuned = set_param(base, f"agent.{param}", value)
-        rows.append((value, run_tier1(entries, settings=wiring, params=tuned)))
-    return rows
+    The body is run_sweep's, line for line. The differences, all of them:
+    - candidates come from `candidates(param, values)`, not a sweep file, and
+      there is no baseline candidate: the other values are the comparison
+    - the ingest settings come in as `ingest_spec` (--ingest), not a file's
+      `ingest:` block
+    - no per-candidate report is printed; the caller prints the table
+    """
+    results: list[Scored] = []
+    baseline_fp = ingest_fingerprint(load_params())
+
+    current_collection = get_settings().qdrant_collection
+    qdrant_url = get_settings().qdrant_url
+
+    ingest_spec = ingest_spec or {}
+    manifest_dsn = ""
+    if reingest and not dry_run:
+        manifest_dsn = frozen_snapshot(ingest_spec, overwrite_frozen)
+
+    for candidate in candidates(param, values, baseline):
+        if reingest:
+            # See run_sweep: every candidate builds its own collection, the one
+            # at the shipped parameters included.
+            needs_build, collection = True, candidate.collection
+        else:
+            needs_build = candidate.fingerprint != baseline_fp
+            collection = (
+                candidate.collection
+                if needs_build or collection_exists(candidate.collection, qdrant_url)
+                else current_collection
+            )
+        path = write_candidate(candidate, collection)
+        print(f"\n=== {candidate.label}  [{candidate.fingerprint}]  {collection}")
+
+        if needs_build and not reingest:
+            print(
+                f"  skipped: {candidate.knob} changes the index, which needs "
+                "--reingest and a full re-ingest"
+            )
+            results.append(Scored(candidate, None))
+            continue
+        if not needs_build and not collection_exists(collection, qdrant_url):
+            print(
+                f"  skipped: no collection {collection} to score — "
+                "--reingest builds one"
+            )
+            results.append(Scored(candidate, None))
+            continue
+        if dry_run:
+            results.append(Scored(candidate, None))
+            continue
+
+        os.environ["RAG_PARAMETERS_PATH"] = str(path)
+        os.environ["RAG_QDRANT_COLLECTION"] = collection
+        env = {"RAG_PARAMETERS_PATH": str(path), "RAG_QDRANT_COLLECTION": collection}
+        settings = get_settings()
+        if needs_build:
+            build(candidate, collection, env, ingest_spec, manifest_dsn)
+
+        effective = get_params()
+        report = run_tier1(entries, settings=settings, params=effective)
+        results.append(Scored(candidate, report, settings, effective))
+
+    return results
 
 
 def format_table(rows: Sequence[tuple[Any, Report]], param: str) -> str:
@@ -200,7 +314,7 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
 
     # Every metric is computed over the top-k ranking, so the label carries the
     # depth. Sweeping top_k makes the depth the x axis, and it stays symbolic.
-    depth = "k" if param == "top_k" else str(rows[0][1].k)
+    depth = "k" if param == "agent.top_k" else str(rows[0][1].k)
 
     xs = [value for value, _ in rows]
     # A bool or string sweep has no numeric axis, so plot against position and
@@ -235,7 +349,7 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
     for axis, name in zip(axes.ravel(), METRIC_NAMES, strict=False):
         draw(axis, name)
     title = f"tier 1 metrics vs {param}"
-    fig.suptitle(title if param == "top_k" else f"{title}  (top_k={depth})")
+    fig.suptitle(title if param == "agent.top_k" else f"{title}  (top_k={depth})")
     fig.tight_layout()
     figures[f"plots/all_metrics_vs_{param}.png"] = fig
     return figures

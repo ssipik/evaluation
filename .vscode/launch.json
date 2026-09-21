@@ -15,7 +15,7 @@
             "console": "integratedTerminal",
             "args": [
                 "generate",
-                "--n", "50",
+                "--n", "30",
                 "--workers", "4",
                 // "--seed", "42",
             ],
@@ -30,7 +30,7 @@
             "console": "integratedTerminal",
             "args": [
                 "aggregate",
-                "--session-id", "generate-20260831-140203-b505ce",
+                "--session-id", "generate-20260921-105011-23e67a",
             ],
         },
         {
@@ -43,7 +43,7 @@
             "console": "integratedTerminal",
             "args": [
                 "pool",
-                "--session-id", "generate-20260831-140203-b505ce",
+                "--session-id", "generate-20260921-105011-23e67a",
             ],
         },
         {
@@ -57,20 +57,22 @@
             "justMyCode": false,
             "args": [
                 "curve",
-                "--param", "top_k", "--values", "1:35",
-                "--mlflow-run", "tune_top_k",
-                // "--param", "rrf_k", "--values", "1:35",
+                // "--param", "agent.top_k", "--values", "5:10",
+                // "--mlflow-run", "tune_top_k",
+                // "--param", "agent.rrf_k", "--values", "1:35",
                 // "--mlflow-model", "rag-retrieval-params@optimal_top_k",
                 // "--mlflow-run", "tune_rrf_k",
-                // "--param", "rrf_dense_weight", "--values", "0:2:0.1",
+                // "--param", "agent.rrf_dense_weight", "--values", "0:2:0.1",
                 // "--mlflow-model", "rag-retrieval-params@optimal_rrf_k",
                 // "--mlflow-run", "tune_rrf_dense_weight",
-                // "--param", "rrf_sparse_weight", "--values", "0:2:0.1",
+                // "--param", "agent.rrf_sparse_weight", "--values", "0:2:0.1",
                 // "--mlflow-model", "rag-retrieval-params@optimal_rrf_dense_weight",
                 // "--mlflow-run", "tune_rrf_sparse_weight",
-                // "--param", "rerank_enabled", "--values", "true,false",
+                // "--param", "agent.rerank_enabled", "--values", "true,false",
                 // "--mlflow-model", "rag-retrieval-params@optimal_rrf_sparse_weight",
                 // "--mlflow-run", "tune_rerank_enabled",
+                "--param", "parse_chunk.chunk_size", "--values", "700,800", "--reingest",
+                "--mlflow-run", "tune_chunk_size",
             ],
         },
         {
@@ -99,9 +101,28 @@
             "args": [
                 "search",
                 "--file", "sweeps/optuna_f_score_rerank.yaml",
-                "--trials", "1",
+                "--trials", "10",
                 "--seed", "42",
-                "--study", "optuna_f_score_rerank-1"
+                "--study", "optuna_f_score_rerank-2"
+            ],
+        },
+        {
+            "name": "rag_evaluation - sweep reingest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "rag_evaluation",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "sweep",
+                "--file", "sweeps/chunking.yaml",
+                "--reingest",
+                // "--overwrite-frozen",
+                "--mlflow-run", "chunking",
+                // "--dry-run",      // write the candidate files, build nothing
+                // "--no-mlflow",
             ],
         },
         {

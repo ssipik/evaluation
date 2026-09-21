@@ -128,6 +128,22 @@ Needs `../qdrant` and `../tei` up. No API key, no spend, seconds per run.
 Only entries with `relevant_documents` are scored; the summary says how many, because
 a mean over three of fifteen entries is not a score of the system.
 
+## Test set — the held-out score
+
+Tier 1 on `data/golden_set_test.yaml` for one configuration, given as exactly
+one of:
+
+```bash
+.venv/bin/python -m rag_evaluation test --file sweeps/chunking.yaml          # its baseline: block
+.venv/bin/python -m rag_evaluation test --mlflow-model rag-retrieval-params@best
+```
+
+`--file` takes a sweep-style yaml and applies its `baseline:` substitutions to
+the shipped parameters; `--mlflow-model` takes a registered set, all three
+sections. The index is the one built for that configuration's fingerprint
+(`rag_chunks_<fingerprint>`), or the standing collection for the shipped
+fingerprint; `test` never builds one — `sweep` or `curve` with `--reingest` do.
+
 ## Tiers 2 and 3 — the judge scorers
 
 Needs `OPENROUTER_API_KEY`. Runs the real agent, so it costs time and money.
@@ -148,17 +164,59 @@ if you point both at the same model or the same family.
 .venv/bin/python -m rag_evaluation sweep --file sweeps/chunking.yaml --reingest
 ```
 
-A sweep file is a baseline plus one list of values per knob; candidates are one
-knob at a time from that baseline. Query-side candidates reuse the collection
-that is already built. A candidate that changes the index gets its own
-collection named by `rag_config.ingest_fingerprint`, and needs `--reingest` plus
-its own ledger:
+A sweep file is a baseline plus candidates of two kinds:
 
-```bash
-export RAG_PG_DSN=postgresql://rag@localhost/rag_eval_<fingerprint>
+```yaml
+baseline:                       # the starting point every candidate departs from
+  agent.top_k: 7
+sweep:                          # one candidate per value, one knob each
+  agent.rrf_k: [2, 10, 60]
+candidates:                     # one candidate per entry, as many knobs as it lists
+  - label: chunk350
+    set:
+      parse_chunk.chunk_size: 350
+      parse_chunk.chunk_overlap: 50
 ```
 
-The runner refuses to write into the production collection or ledger.
+`sweep:` is coordinate descent — the winner of one knob is *not* carried into
+the next knob's candidates; put it in the next file's `baseline:` yourself. Use
+`candidates:` for knobs that cannot move independently, chunk size and overlap
+being the case that matters: 350 words against the baseline's 100-word overlap
+changes the overlap fraction too, so the score could not be attributed.
+
+Query-side candidates reuse the collection that is already built and score in
+seconds. A candidate that changes the index gets its own collection named by
+`rag_config.ingest_fingerprint` and needs `--reingest`, which for each candidate:
+
+1. derives `rag_eval_<fingerprint>` on the same server as `RAG_PG_DSN`, creates
+   it, applies `postgres/sql/*.sql`, and copies in the newest sighting of every
+   document from the source `ingest_manifest` under one run_id;
+2. runs stages 2-6 (never discover — see `ledger.py`) into
+   `rag_chunks_<fingerprint>`;
+3. scores tier 1 against it.
+
+So `RAG_PG_DSN` points at the database holding the real manifest, and the sweep
+writes only to the copies. Overrides, all optional:
+
+```yaml
+ingest:
+  source_dsn: postgresql+psycopg://rag@host/rag_ingestion   # default: $RAG_PG_DSN
+  run_id: frozen                                            # stamped on the copy
+  prefix: rag_eval_
+```
+
+The runner refuses to write into the production collection or ledger. It needs
+`CREATE DATABASE` on that server, and `RAG_TEI_REPLICAS` should match the
+running `tei-embed` count — embed sizes its worker threads from it.
+
+**Resumable.** Step 1 is idempotent and step 2 re-runs only what the ledger does
+not record as ingested, so a campaign killed halfway through picks up where it
+stopped. A candidate whose collection exists and whose ledger is complete is
+skipped.
+
+**What is frozen is the list of documents, not their bytes** — stage 4 fetches
+every URL live. Run a campaign's candidates back to back so the window in which
+a source can change stays small.
 
 ## Promoting a tuned set
 

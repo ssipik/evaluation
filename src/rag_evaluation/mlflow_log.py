@@ -201,6 +201,14 @@ def log_sweep(
                         f"baseline.{knob}": value
                         for knob, value in (spec.get("baseline") or {}).items()
                     },
+                    # A `candidates:` entry moves several knobs at once, so it
+                    # is logged whole rather than as one value list per knob.
+                    **{
+                        f"candidate.{entry.get('label', i)}": ",".join(
+                            f"{k}={v}" for k, v in (entry.get("set") or {}).items()
+                        )
+                        for i, entry in enumerate(spec.get("candidates") or [])
+                    },
                 }
             )
             for scored in results:
@@ -429,10 +437,12 @@ def log_curve(
     golden_path: str,
     run_name: str | None = None,
     experiment: str = EXPERIMENT,
+    collections: dict | None = None,
 ) -> None:
     """One parent run for the sweep, one nested child per value.
     - parent: the swept values as step-indexed metrics, plus the plots and csv
-    - child:  the full report for one value, params carrying that value
+    - child:  the full report for one value, params carrying that value, and
+      the collection it scored when `collections` says each value had its own
     Steps are the values themselves when they are whole numbers, so MLflow's
     own chart reads as metric vs parameter; otherwise the index, and the csv
     artifact carries the real values.
@@ -441,6 +451,8 @@ def log_curve(
         return
     try:
         import mlflow
+
+        from dataclasses import replace
 
         from rag_evaluation.curve import curve_csv, make_figures
 
@@ -455,6 +467,11 @@ def log_curve(
                     **_params(settings, params),
                     "swept_param": param,
                     "swept_values": ",".join(str(v) for v in values),
+                    **(
+                        {"swept_collections": ",".join(collections[v] for v in values)}
+                        if collections
+                        else {}
+                    ),
                 }
             )
             for i, (value, report) in enumerate(rows):
@@ -462,13 +479,18 @@ def log_curve(
                 for name, mean in report.means.items():
                     mlflow.log_metric(name, mean, step=step)
                 child = f"{run_name}-{param}={value}" if run_name else f"{param}={value}"
-                # No bare `param`: _log_one_report logs the same value as
-                # `agent.<param>`, the name promote and load_baseline read.
+                # _log_one_report logs the value under the same `section.field`
+                # name, the one promote and load_baseline read.
+                scored = (
+                    replace(settings, qdrant_collection=collections[value])
+                    if collections
+                    else settings
+                )
                 with mlflow.start_run(run_name=child, nested=True):
                     _log_one_report(
                         report,
-                        settings,
-                        set_param(params, f"agent.{param}", value),
+                        scored,
+                        set_param(params, param, value),
                         golden_path,
                     )
             mlflow.log_text(curve_csv(rows, param), f"{param}_curve.csv")

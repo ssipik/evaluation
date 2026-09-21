@@ -20,8 +20,9 @@ from rag_agent.settings import get_params, get_settings
 from rag_evaluation.generate import DEFAULT_MODEL as GENERATE_MODEL
 from rag_config import set_param
 
-from rag_evaluation.curve import SWEEPABLE
+from rag_evaluation.curve import INGEST_SWEEPABLE, SWEEPABLE
 from rag_evaluation.golden import DEFAULT_PATH, GoldenSetError, load_golden
+from rag_evaluation.holdout import DEFAULT_TEST_PATH
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,18 @@ log = logging.getLogger(__name__)
 def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--golden", default=str(DEFAULT_PATH), help="the golden set")
     parser.add_argument("--ids", nargs="*", help="only these entry ids")
+
+
+def _ingest_settings(specs: list[str]) -> dict:
+    """`--ingest name=value` pairs as a sweep file's `ingest:` block. Whole numbers
+    become ints; anything else (a snapshot name, a dsn) stays a string."""
+    out: dict = {}
+    for spec in specs:
+        name, sep, raw = spec.partition("=")
+        if not sep:
+            raise SystemExit(f"--ingest {spec!r}: expected name=value")
+        out[name.strip()] = int(raw) if raw.strip().lstrip("-").isdigit() else raw.strip()
+    return out
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +55,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--rerank", action="store_true", help="score with the cross-encoder on"
     )
     tier1.add_argument(
+        "--no-mlflow", action="store_true", help="print only, log nothing"
+    )
+
+    test = sub.add_parser(
+        "test", help="tier 1 on the test golden set, for one chosen configuration"
+    )
+    test.add_argument(
+        "--golden", default=str(DEFAULT_TEST_PATH), help="the test golden set"
+    )
+    test.add_argument("--ids", nargs="*", help="only these entry ids")
+    source = test.add_mutually_exclusive_group(required=True)
+    source.add_argument(
+        "--file",
+        help="a yaml with a `baseline:` block, as in a sweep file — its "
+        "substitutions on top of the shipped parameters",
+    )
+    source.add_argument(
+        "--mlflow-model",
+        metavar="NAME@ALIAS|NAME/VERSION",
+        help="a registered parameter set, as MLflow addresses one",
+    )
+    test.add_argument(
+        "--mlflow-run", help="name of the MLflow run (default: test-<file or model>)"
+    )
+    test.add_argument(
         "--no-mlflow", action="store_true", help="print only, log nothing"
     )
 
@@ -142,13 +180,15 @@ def build_parser() -> argparse.ArgumentParser:
     # curve command and its arguments
     curve = sub.add_parser(
         "curve",
-        help="score tier 1 across a range of one query parameter and plot every metric",
+        help="score tier 1 across a range of one parameter and plot every metric",
     )
     _common(curve)
     curve.add_argument(
         "--param",
         required=True,
-        help=f"the query parameter to vary — one of {', '.join(sorted(SWEEPABLE))}",
+        help=f"the parameter to vary, as section.field — a query one "
+        f"({', '.join(sorted(SWEEPABLE))}) or, with --reingest, an ingest one "
+        f"({', '.join(INGEST_SWEEPABLE)})",
     )
     curve.add_argument(
         "--values",
@@ -166,7 +206,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         dest="overrides",
         metavar="NAME=VALUE",
-        help="hold another parameter at a value for this sweep, e.g. --set-params top_k=7; repeatable",
+        help="hold another parameter at a value for this sweep, e.g. --set-params agent.top_k=7; repeatable",
+    )
+    curve.add_argument(
+        "--reingest",
+        action="store_true",
+        help="build a collection for each value first (stages 2-6 over the frozen "
+        "snapshot) — required for an ingest parameter",
+    )
+    curve.add_argument(
+        "--dry-run", action="store_true", help="write the candidates, score nothing"
+    )
+    curve.add_argument(
+        "--overwrite-frozen",
+        action="store_true",
+        help="with --reingest: retake the manifest snapshot, dropping the one there",
+    )
+    curve.add_argument(
+        "--ingest",
+        action="append",
+        default=[],
+        dest="ingest",
+        metavar="NAME=VALUE",
+        help="with --reingest: a sweep file's `ingest:` setting, e.g. "
+        "--ingest parse_workers=4 --ingest embed_batch_size=8; repeatable",
     )
     curve.add_argument(
         "--mlflow-run",
@@ -212,6 +275,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sweep.add_argument(
         "--dry-run", action="store_true", help="write the candidates, score nothing"
+    )
+    sweep.add_argument(
+        "--overwrite-frozen",
+        action="store_true",
+        help="retake the manifest snapshot every candidate is built from, "
+        "dropping the one that is there",
     )
     sweep.add_argument(
         "--mlflow-run",
@@ -273,6 +342,48 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
         )
 
+    if args.command == "test":
+        from dataclasses import replace
+
+        from rag_config.baseline import BaselineError
+        from rag_config.promote import PromoteError
+
+        from rag_evaluation.holdout import (
+            HoldoutError,
+            collection_for,
+            params_from_file,
+            params_from_mlflow,
+        )
+        from rag_evaluation.mlflow_log import log_tier1
+        from rag_evaluation.retrieval_eval import format_report, run_tier1
+        from rag_evaluation.sweep import SweepError
+
+        try:
+            if args.file:
+                params = params_from_file(args.file)
+                name = Path(args.file).stem
+            else:
+                params, summary = params_from_mlflow(args.mlflow_model)
+                print(summary, file=sys.stderr)
+                name = args.mlflow_model.replace("@", "-").replace("/", "-")
+            settings = get_settings()
+            settings = replace(settings, qdrant_collection=collection_for(params, settings))
+        except (HoldoutError, SweepError, BaselineError, PromoteError) as exc:
+            print(f"test: {exc}", file=sys.stderr)
+            return 2
+        print(f"scoring {settings.qdrant_collection} on {args.golden}", file=sys.stderr)
+        report = run_tier1(entries, settings=settings, params=params)
+        print(format_report(report))
+        if not args.no_mlflow:
+            log_tier1(
+                report,
+                settings,
+                params,
+                golden_path=args.golden,
+                run_name=args.mlflow_run or f"test-{name}",
+            )
+        return 0
+
     if args.command == "retrieval":
         from rag_evaluation.mlflow_log import log_tier1
         from rag_evaluation.retrieval_eval import format_report, run_tier1
@@ -305,6 +416,7 @@ def main(argv: list[str] | None = None) -> int:
             run_curve,
         )
         from rag_evaluation.mlflow_log import BaselineError, load_baseline, log_curve
+        from rag_evaluation.sweep import SweepError
 
         try:
             overrides = parse_overrides(args.overrides)
@@ -322,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.mlflow_model:
                 raw, summary, fingerprint = load_baseline(args.mlflow_model)
                 for name, value in cast_params(raw).items():
-                    params = set_param(params, f"agent.{name}", value)
+                    params = set_param(params, name, value)
                 print(summary, file=sys.stderr)
                 current = ingest_fingerprint()
                 if fingerprint and fingerprint != current:
@@ -332,14 +444,25 @@ def main(argv: list[str] | None = None) -> int:
                         file=sys.stderr,
                     )
             for name, value in overrides.items():
-                params = set_param(params, f"agent.{name}", value)
+                params = set_param(params, name, value)
             values = parse_values(args.values, args.param)
-            rows = run_curve(
-                entries, args.param, values, settings=settings, params=params
+            results = run_curve(
+                args.param,
+                values,
+                entries,
+                reingest=args.reingest,
+                dry_run=args.dry_run,
+                overwrite_frozen=args.overwrite_frozen,
+                baseline=params,
+                ingest_spec=_ingest_settings(args.ingest),
             )
-        except (CurveError, BaselineError) as exc:
+        except (CurveError, BaselineError, SweepError) as exc:
             print(f"curve: {exc}", file=sys.stderr)
             return 2
+        # A curve plots values, not candidates: the scored ones, in order.
+        scored = [s for s in results if s.report is not None]
+        rows = [(s.candidate.value, s.report) for s in scored]
+        collections = {s.candidate.value: s.settings.qdrant_collection for s in scored}
         print(format_table(rows, args.param))
         if not args.no_mlflow:
             log_curve(
@@ -349,6 +472,9 @@ def main(argv: list[str] | None = None) -> int:
                 params,
                 golden_path=args.golden,
                 run_name=args.mlflow_run,
+                # only when each value had its own; otherwise all are the
+                # standing collection, already in the parent's params
+                collections=collections if args.reingest else None,
             )
         return 0
 
@@ -410,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
                 entries,
                 reingest=args.reingest,
                 dry_run=args.dry_run,
+                overwrite_frozen=args.overwrite_frozen,
             )
         except SweepError as exc:
             print(f"sweep: {exc}", file=sys.stderr)

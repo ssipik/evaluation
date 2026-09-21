@@ -116,3 +116,43 @@ class TestGuard:
 
     def test_allows_a_dedicated_pair(self):
         guard("rag_chunks_a3f19c", "postgresql://rag@localhost/rag_eval_a3f19c")
+
+
+PAIRED = {
+    "baseline": {"agent.top_k": 7},
+    "candidates": [
+        {
+            "label": "chunk350",
+            "set": {"parse_chunk.chunk_size": 350, "parse_chunk.chunk_overlap": 50},
+        }
+    ],
+}
+
+
+class TestPairedCandidates:
+    """`candidates:` — knobs that cannot be moved one at a time."""
+
+    def test_one_candidate_moves_every_knob_it_lists(self):
+        produced = {c.label: c for c in candidates(PAIRED)}
+        chunk350 = produced["chunk350"]
+        assert chunk350.params.parse_chunk.chunk_size == 350
+        assert chunk350.params.parse_chunk.chunk_overlap == 50
+        # and keeps the baseline's query side
+        assert chunk350.params.agent.top_k == 7
+
+    def test_the_label_names_the_file_not_the_joined_knobs(self):
+        produced = {c.label: c for c in candidates(PAIRED)}
+        assert produced["chunk350"].slug == "chunk350"
+
+    def test_it_gets_its_own_collection(self):
+        produced = {c.label: c for c in candidates(PAIRED)}
+        assert produced["chunk350"].collection != produced["baseline"].collection
+
+    def test_an_empty_set_raises(self):
+        with pytest.raises(SweepError, match="empty"):
+            list(candidates({"candidates": [{"label": "x", "set": {}}]}))
+
+    def test_both_kinds_can_appear_in_one_file(self):
+        spec = {"sweep": {"agent.top_k": [5]}, "candidates": PAIRED["candidates"]}
+        labels = [c.label for c in candidates(spec)]
+        assert labels == ["baseline", "agent.top_k=5", "chunk350"]
