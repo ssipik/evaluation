@@ -236,7 +236,9 @@ def find_clusters(
         return []
     if vectors is None:
         base = settings or get_settings()
-        vectors = TeiClient(base.tei_url, timeout=120.0).embed([p.text for p in points])
+        vectors = TeiClient(
+            base.tei_embed_url, timeout=120.0, batch_size=base.embed_batch_size
+        ).embed([p.text for p in points])
 
     sim = _similarity_matrix(vectors)
     pairs = [
@@ -445,7 +447,7 @@ def run_aggregate(
         return 2
     print(f"{len(clusters)} clusters worth asking about", file=sys.stderr)
     if not clusters:
-        return 1
+        return 0
     if dry_run:
         for c in clusters:
             print(f"\n  {len(c.documents)} documents, similarity {c.similarity:.3f}")
