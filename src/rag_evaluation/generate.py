@@ -34,13 +34,14 @@ import re
 import sys
 
 import yaml
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from rag_agent.qdrant import QdrantSearcher
 from rag_agent.settings import Settings, get_provider, get_settings
+from rag_config import load_params
 from sqlalchemy import BigInteger, Column, MetaData, Table, Text, create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
@@ -151,8 +152,13 @@ def sample_documents(
     seed: int | None = None,
     dsn: str | None = None,
     engine: Engine | None = None,
+    exclude: Iterable[DocRef] = (),
 ) -> list[Sampled]:
-    """`n` documents from the ledger, drawn with `seed`.
+    """`n` documents from the ledger, drawn with `seed`, leaving out `exclude`.
+
+    `exclude` is for the documents the golden set already covers: a question is
+    written from one document, so a document drawn twice tends to give the same
+    question twice.
 
     The join is what makes the result one row per document. `ingest_manifest`
     holds a row per (run_id, source_system, doc_url), so a document listed by
@@ -202,22 +208,31 @@ def sample_documents(
         )
         for row in rows
     ]
-    candidates.sort(key=lambda s: (s.doc.source_system, s.doc.url))
+    excluded = set(exclude)
+    kept = [c for c in candidates if c.doc not in excluded]
+    if excluded:
+        log.info(
+            "%d of %d active documents left after excluding the golden set's",
+            len(kept), len(candidates),
+        )
+    candidates = sorted(kept, key=lambda s: (s.doc.source_system, s.doc.url))
     if n >= len(candidates):
-        log.info("corpus has %d active documents — taking all of them", len(candidates))
+        log.info("%d documents to draw from — taking all of them", len(candidates))
         return candidates
     return random.Random(seed).sample(candidates, n)
 
 
 def document_text(
-    searcher: QdrantSearcher, sampled: Sampled, max_chars: int
+    searcher: QdrantSearcher, sampled: Sampled, max_chars: int, max_chunks: int
 ) -> tuple[str, str | None]:
     """One document's indexed text in `node_seq` order, and its language.
 
     A document is source_system + url together, so both halves go into the
     scroll — two sources listing one url are two documents.
     """
-    records = searcher.scroll_document(sampled.doc.url, sampled.doc.source_system)
+    records = searcher.scroll_document(
+        sampled.doc.url, sampled.doc.source_system, limit=max_chunks
+    )
     parts: list[str] = []
     language: str | None = None
     size = 0
@@ -381,6 +396,8 @@ def generate(
     settings = settings or get_settings()
     client = _build_client(settings)
     searcher = QdrantSearcher(settings.qdrant_url, settings.qdrant_collection)
+    # The agent's fetch_document bound, so both read a document the same way.
+    max_chunks = load_params().agent.fetch_max_chunks
 
     done: list[Generated] = []
     failed: list[Failure] = []
@@ -392,7 +409,7 @@ def generate(
         # pool threads from the main one (see trace_session).
         with trace_session(session_id):
             try:
-                body, language = document_text(searcher, item, max_chars)
+                body, language = document_text(searcher, item, max_chars, max_chunks)
                 if not body.strip():
                     # Ledger says active, index has nothing. Normal after a
                     # sweep rebuilt the collection under a different name.
@@ -574,19 +591,28 @@ def run_generate(
 ) -> int:
     """Sample, generate, write files; returns the exit code.
 
-    `entries` is the existing golden set, read only for the ids already taken.
+    `entries` is the existing golden set: its ids are taken, and its documents are
+    not sampled again.
     """
+    covered = {doc for entry in entries for doc in entry.relevant_documents}
     try:
-        sampled = sample_documents(n=n, seed=seed, dsn=dsn)
+        sampled = sample_documents(n=n, seed=seed, dsn=dsn, exclude=covered)
     except OperationalError as exc:
         # The usual first-run failure on this box: Docker Desktop is not
         # started, so ../postgres is not listening.
         print(f"cannot read the ledger: {exc.orig}", file=sys.stderr)
         return 2
     if not sampled:
-        print("no active documents in the ledger", file=sys.stderr)
+        print(
+            f"no active documents in the ledger outside the {len(covered)} the "
+            "golden set already covers",
+            file=sys.stderr,
+        )
         return 2
-    print(f"sampled {len(sampled)} documents", file=sys.stderr)
+    print(
+        f"sampled {len(sampled)} documents, excluding {len(covered)} in the golden set",
+        file=sys.stderr,
+    )
     if dry_run:
         for item in sampled:
             print(f"  {item.doc.source_system:14} {item.doc.url}")

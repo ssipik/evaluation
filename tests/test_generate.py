@@ -41,7 +41,7 @@ class FakeSearcher:
     def __init__(self, records):
         self.records = records
 
-    def scroll_document(self, source_url, source_system=None, limit=1024):
+    def scroll_document(self, source_url, source_system=None, *, limit):
         return sorted(
             (
                 r
@@ -193,6 +193,23 @@ class TestSampleDocuments:
         second = sample_documents(n=5, seed=8, engine=engine)
         assert [s.doc for s in first] != [s.doc for s in second]
 
+    def test_excluded_documents_are_not_drawn(self):
+        """Keyed on the pair: the same url under another source still counts."""
+        engine = self.ledger(
+            [
+                (1, "web_rss", "https://a", "active"),
+                (2, "web_rss", "https://b", "active"),
+                (3, "confluence", "https://a", "active"),
+            ]
+        )
+        out = sample_documents(
+            n=50, engine=engine, exclude=[DocRef("web_rss", "https://a")]
+        )
+        assert {s.doc for s in out} == {
+            DocRef("web_rss", "https://b"),
+            DocRef("confluence", "https://a"),
+        }
+
     def test_asking_for_more_than_there_is_returns_everything(self):
         assert len(sample_documents(n=500, engine=self.many())) == 20
 
@@ -204,7 +221,7 @@ class TestSampleDocuments:
 class TestDocumentText:
     def test_chunks_are_joined_in_node_seq_order(self):
         searcher = FakeSearcher([chunk(2, "second"), chunk(0, "first"), chunk(1, "mid")])
-        body, language = document_text(searcher, sampled(), max_chars=1000)
+        body, language = document_text(searcher, sampled(), max_chars=1000, max_chunks=1024)
         assert body == "first\n\nmid\n\nsecond"
         assert language == "en"
 
@@ -214,17 +231,17 @@ class TestDocumentText:
         searcher = FakeSearcher(
             [chunk(0, "ours"), chunk(1, "theirs", source_system="confluence")]
         )
-        body, _ = document_text(searcher, sampled(), max_chars=1000)
+        body, _ = document_text(searcher, sampled(), max_chars=1000, max_chunks=1024)
         assert body == "ours"
 
     def test_a_document_with_no_chunks_here_is_empty(self):
         searcher = FakeSearcher([chunk(0, "theirs", source_system="confluence")])
-        body, _ = document_text(searcher, sampled(), max_chars=1000)
+        body, _ = document_text(searcher, sampled(), max_chars=1000, max_chunks=1024)
         assert body == ""
 
     def test_max_chars_truncates_rather_than_dropping_the_chunk(self):
         searcher = FakeSearcher([chunk(0, "aaaa"), chunk(1, "bbbb")])
-        body, _ = document_text(searcher, sampled(), max_chars=6)
+        body, _ = document_text(searcher, sampled(), max_chars=6, max_chunks=1024)
         assert body == "aaaa\n\nbb"
 
 

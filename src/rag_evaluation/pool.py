@@ -37,7 +37,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from rag_agent.retrieval import Retriever
-from rag_agent.settings import Settings, get_settings
+from rag_config import set_param
+from rag_agent.settings import Settings, get_params, get_settings
 
 from rag_evaluation.golden import DEFAULT_PATH as GOLDEN_PATH
 from rag_evaluation.golden import DocRef, Entry, GoldenSetError, load_golden
@@ -101,12 +102,12 @@ def pool_entries(
 ) -> dict[str, list[Candidate]]:
     """Per entry, the union of what every run returned, minus what is labeled."""
     base = settings or get_settings()
+    # Rerank off regardless of the file or the environment; see DEFAULT_RUNS.
+    params = set_param(get_params(), "agent.rerank_enabled", False)
     pooled: dict[str, dict[DocRef, Candidate]] = {e.id: {} for e in entries}
 
     for run in runs:
-        # Rerank off regardless of the ambient setting: see the note by
-        # DEFAULT_RUNS. Keeps the pool the same whatever RAG_RERANK_ENABLED is.
-        retriever = Retriever(replace(base, rerank_enabled=False))
+        retriever = Retriever(base, params)
         try:
             for entry in entries:
                 found = retriever.search(entry.question, limit=run.k)
