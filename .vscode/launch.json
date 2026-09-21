@@ -126,6 +126,21 @@
             ],
         },
         {
+            "name": "rag_evaluation - test",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "rag_evaluation",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "test",
+                // "--file", "sweeps/test.yaml"
+                "--mlflow-model", "rag-retrieval-params@production",
+            ],
+        },
+        {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",

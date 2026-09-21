@@ -152,11 +152,13 @@ def log_tier1(
     golden_path: str,
     run_name: str | None = None,
     experiment: str = EXPERIMENT,
+    context: str = "eval",
 ) -> None:
     """One MLflow run for one tier-1 scoring. Silent when tracing is off.
 
     Tier 1 scores the retrieval, so it lands in the same experiment as tiers 2
-    and 3 — see EXPERIMENT above.
+    and 3 — see EXPERIMENT above. `context` labels the dataset input: `test`
+    from the test command, `eval` otherwise.
     """
     if not active():
         return
@@ -165,7 +167,7 @@ def log_tier1(
 
         configure(experiment)
         with mlflow.start_run(run_name=run_name):
-            _log_one_report(report, settings, params, golden_path)
+            _log_one_report(report, settings, params, golden_path, context)
     except Exception as exc:
         log.warning("MLflow logging failed, scores are still above: %s", exc)
 
@@ -341,8 +343,13 @@ def _save_sweep_locally(csv: str, run_name: str | None, run_id: str) -> None:
         log.warning("could not write %s: %s", out, exc)
 
 
-def _log_golden_dataset(report, golden_path: str) -> None:
+def _log_golden_dataset(report, golden_path: str, context: str = "eval") -> None:
     """Record which golden set produced these numbers, as a hashed dataset input.
+
+    Named after its file — `golden_set`, `golden_set_test` — so the tuning set
+    and the held-out one are told apart by name, not only by digest. `context`
+    is the label MLflow shows beside it: `eval` for the tuning commands, `test`
+    for the held-out score.
 
     The digest is what makes two runs comparable — same digest, same questions
     and labels — so `mlflow.search_runs(filter_string="datasets.digest='…'")`
@@ -372,9 +379,9 @@ def _log_golden_dataset(report, golden_path: str) -> None:
         for entry in sorted((r.entry for r in report.results), key=lambda e: e.id)
     ]
     dataset = mlflow.data.from_pandas(
-        pd.DataFrame(rows), name="golden_set", source=golden_path
+        pd.DataFrame(rows), name=Path(golden_path).stem, source=golden_path
     )
-    mlflow.log_input(dataset, context="eval")
+    mlflow.log_input(dataset, context=context)
 
 
 def _log_parameter_carrier() -> None:
@@ -402,13 +409,13 @@ def _log_parameter_carrier() -> None:
 
 
 def _log_one_report(
-    report, settings: Settings, params: Params, golden_path: str
+    report, settings: Settings, params: Params, golden_path: str, context: str = "eval"
 ) -> None:
     """Params, means, the per-attribute split and the per-entry csv of one
     report, into whichever run is active."""
     import mlflow
 
-    _log_golden_dataset(report, golden_path)
+    _log_golden_dataset(report, golden_path, context)
     mlflow.log_params(_params(settings, params))
     mlflow.log_metrics(report.means)
     # Coverage is a metric, not a footnote: it says how much of the set the

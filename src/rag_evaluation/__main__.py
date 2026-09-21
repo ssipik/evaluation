@@ -381,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
                 params,
                 golden_path=args.golden,
                 run_name=args.mlflow_run or f"test-{name}",
+                context="test",
             )
         return 0
 
