@@ -98,6 +98,7 @@ def _scorers(judge: str, with_reference: bool) -> list:
         RetrievalGroundedness,
         RetrievalRelevance,
         RetrievalSufficiency,
+        ToolCallCorrectness,
         ToolCallEfficiency,
     )
 
@@ -108,6 +109,9 @@ def _scorers(judge: str, with_reference: bool) -> list:
         RelevanceToQuery(model=judge),
         RetrievalRelevance(model=judge),
         Guidelines(name="citation_and_refusal", guidelines=GUIDELINES, model=judge),
+        # no `expected_tool_calls` in the dataset, so the judge rates whether the
+        # calls fit the question — e.g. it answered without searching at all
+        ToolCallCorrectness(model=judge),
         ToolCallEfficiency(model=judge),
     ]
     if with_reference:

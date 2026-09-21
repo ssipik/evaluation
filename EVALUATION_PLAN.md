@@ -1,6 +1,6 @@
 # Evaluation procedure — plan
 
-> **Status (2026-08-19): implemented, except B8.** This is the design record — what was
+> **Status (2026-09-21): implemented, except B8; tiers 2 and 3 not yet run.** This is the design record — what was
 > decided and why. The living procedure is `EVALUATION.md` (Part A below became that file);
 > `README.md` is how to run it.
 >
@@ -11,9 +11,9 @@
 > | B2 config propagation | done — no stage changes were needed |
 > | B3 `ingest_fingerprint` | done, `../config/src/rag_config/params.py`, tested |
 > | B4 sweep runner | query-side verified live; the ingest path is written but never run end to end, and preparing a ledger is still by hand (see `stages.py`) |
-> | B5 golden set | moved, both fields added; 2 of 15 entries labeled so far |
+> | B5 golden set | done — 63 tuning entries (`golden_set.yaml`) + 29 held-out (`golden_set_test.yaml`), all with `relevant_documents` and `reference`; no `expect_refusal` negative controls |
 > | B6 tier 1 | done, verified against the live corpus and MLflow |
-> | B7 tiers 2 and 3 | written, not yet run — needs `OPENROUTER_API_KEY` and real spend |
+> | B7 tiers 2 and 3 | written and unit-tested (`tests/test_agent_eval.py`), not yet run live — needs `OPENROUTER_API_KEY` and real spend; judge calibration not done |
 > | B8 CI | **not started**, including the Qdrant snapshot it depends on |
 > | B9 documentation | done |
 >
