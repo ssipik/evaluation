@@ -1,0 +1,29 @@
+# The first ingest-side campaign: chunk size, 300 to 1000 words in steps of
+# 100. Needs `--reingest` — every candidate is a full stages 2-6 run into its
+# own collection and its own ledger. chunk_size 700 is the shipped value, so it
+# reuses the standing index and seven candidates actually build: roughly an
+# hour with tei-embed at 4 replicas. Resumable: a candidate whose collection is
+# built and whose ledger is complete is skipped on the next run.
+#
+# Overlap stays at the baseline's 100 words, so the overlap *fraction* varies
+# with the size (33 % at 300, 10 % at 1000). That is one confound to keep in
+# mind when reading the curve; a follow-up campaign can hold the fraction fixed
+# with `candidates:` entries.
+#
+# Query side held at the tuned values so the comparison is chunking only.
+baseline:
+  agent.rerank_enabled: false
+
+sweep:
+  parse_chunk.chunk_size: [300, 400, 500, 600, 700, 800, 900, 1000]
+  # parse_chunk.chunk_size: [700, 800]
+
+# Where the frozen manifest is copied from, and what the copy is called. The
+# sweep never writes into this database: it derives `rag_eval_<fingerprint>` on
+# the same server, one per candidate, and the stages read only that.
+ingest:
+  # source_dsn: falls back to RAG_PG_DSN, then the localhost default
+  run_id: frozen
+  parse_workers: 4        # parse_chunk batches at a time; CPU-bound
+  batch_max_docs: 25      # plan's cap per batch, so there are enough batches to share
+  embed_batch_size: 8     # texts per TEI request; 32 passes tei_timeout on long chunks
