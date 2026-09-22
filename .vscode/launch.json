@@ -138,6 +138,7 @@
                 "test",
                 // "--file", "sweeps/test.yaml"
                 "--mlflow-model", "rag-retrieval-params@production",
+                "--collection", "rag_chunks",
             ],
         },
         {

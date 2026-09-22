@@ -77,6 +77,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="a registered parameter set, as MLflow addresses one",
     )
     test.add_argument(
+        "--collection",
+        help="score this Qdrant collection instead of the one the configuration's "
+        "fingerprint picks, e.g. the standing rag_chunks",
+    )
+    test.add_argument(
         "--mlflow-run", help="name of the MLflow run (default: test-<file or model>)"
     )
     test.add_argument(
@@ -356,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         from rag_evaluation.mlflow_log import log_tier1
         from rag_evaluation.retrieval_eval import format_report, run_tier1
-        from rag_evaluation.sweep import SweepError
+        from rag_evaluation.sweep import SweepError, collection_exists
 
         try:
             if args.file:
@@ -367,7 +372,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(summary, file=sys.stderr)
                 name = args.mlflow_model.replace("@", "-").replace("/", "-")
             settings = get_settings()
-            settings = replace(settings, qdrant_collection=collection_for(params, settings))
+            if args.collection:
+                if not collection_exists(args.collection, settings.qdrant_url):
+                    raise HoldoutError(f"no collection {args.collection}")
+                collection = args.collection
+            else:
+                collection = collection_for(params, settings)
+            settings = replace(settings, qdrant_collection=collection)
         except (HoldoutError, SweepError, BaselineError, PromoteError) as exc:
             print(f"test: {exc}", file=sys.stderr)
             return 2

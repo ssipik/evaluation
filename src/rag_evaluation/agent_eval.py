@@ -20,12 +20,19 @@ stack and two version ceilings to work around its own dependency breakage.
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import logging
 import os
+import signal
 import sys
-from collections.abc import Sequence
-from dataclasses import replace
+import threading
+import time
+from collections.abc import Callable, Sequence
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
 
+from rag_agent.retrieval import Retriever
 from rag_agent.settings import get_params, get_settings
 from rag_config import set_param
 from rag_agent.workflow import RagAgent
@@ -71,24 +78,145 @@ def build_dataset(entries: Sequence[Entry]) -> list[dict]:
     return rows
 
 
-def _predict_fn(agent: RagAgent):
-    """One question through the real agent, synchronously.
+def _predict_fn(new_agent: Callable[[], RagAgent]):
+    """One question through the real agent, synchronously, on a fresh agent.
 
-    Memory is reset per question: the golden set is independent questions, not a
-    conversation, and carrying context lets an earlier answer leak into a later
-    one.
+    MLflow calls this from several threads at once, so nothing per-question may
+    be shared:
+    - the evidence log — `run()` resets it, wiping another question's citations
+    - the LLM's async client — bound to the event loop of the thread that opened it
+    - the memory — the golden set is independent questions, not a conversation
+    The retriever is sync and thread-safe, so `new_agent` passes one shared copy.
     """
 
     def predict(question: str) -> str:
+        agent = new_agent()
+
         async def turn() -> str:
-            agent.memory.reset()
             handler = await agent.run(question)
             response = await handler
             return str(getattr(response, "response", response))
 
-        return asyncio.run(turn())
+        with INFLIGHT.track("agent", question):
+            return asyncio.run(turn())
 
     return predict
+
+
+class _Inflight:
+    """The agent and judge calls running right now, for finding where a run hangs.
+
+    Each call logs its start and end, and `progress` logs the steps between them;
+    `watch` turns silence into a stack dump.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._calls: dict[int, tuple[str, str, float]] = {}
+        self._next = 0
+        self._last_event = time.monotonic()
+
+    def progress(self, what: str) -> None:
+        """Log a step outside any call, and count it as progress."""
+        self._last_event = time.monotonic()
+        log.info("%s", what)
+
+    @contextmanager
+    def track(self, kind: str, label: str):
+        label = " ".join(label.split())[:60]
+        with self._lock:
+            self._next += 1
+            n = self._next
+            self._calls[n] = (kind, label, time.monotonic())
+            self._last_event = time.monotonic()
+        log.info("%s #%d start: %s", kind, n, label)
+        start = time.monotonic()
+        ok = False
+        try:
+            yield
+            ok = True
+        finally:
+            with self._lock:
+                del self._calls[n]
+                self._last_event = time.monotonic()
+            log.info(
+                "%s #%d %s after %.1f s",
+                kind, n, "done" if ok else "FAILED", time.monotonic() - start,
+            )
+
+    def snapshot(self) -> list[tuple[str, str, float]]:
+        """(kind, label, age in seconds) of every running call, oldest first."""
+        now = time.monotonic()
+        with self._lock:
+            calls = [(k, lbl, now - t) for k, lbl, t in self._calls.values()]
+        return sorted(calls, key=lambda c: -c[2])
+
+    @contextmanager
+    def watch(self, stacks_path: Path, every: float = 60, stuck_after: float = 300):
+        """Report once a minute; dump every thread's stack, once, when a call has
+        run `stuck_after` seconds or nothing has started or ended for that long.
+        `kill -USR1 <pid>` dumps them on demand."""
+        stop = threading.Event()
+        self._last_event = time.monotonic()
+        stacks_file = stacks_path.open("w")
+        faulthandler.register(signal.SIGUSR1, file=stacks_file, all_threads=True)
+        log.info("pid %d — `kill -USR1 %d` writes thread stacks to %s", os.getpid(), os.getpid(), stacks_path)
+
+        def report() -> None:
+            dumped = False
+            while not stop.wait(every):
+                calls = self.snapshot()
+                idle = time.monotonic() - self._last_event
+                if calls:
+                    counts = {k: sum(c[0] == k for c in calls) for k in ("agent", "judge")}
+                    kind, label, age = calls[0]
+                    log.info(
+                        "in flight: %d agent, %d judge; oldest %s %.0f s: %s",
+                        counts["agent"], counts["judge"], kind, age, label,
+                    )
+                    stuck = age
+                else:
+                    log.info("in flight: nothing; no progress for %.0f s", idle)
+                    stuck = idle
+                if stuck > stuck_after and not dumped:
+                    faulthandler.dump_traceback(file=stacks_file, all_threads=True)
+                    stacks_file.flush()
+                    log.warning("stuck for %.0f s — thread stacks in %s", stuck, stacks_path)
+                    dumped = True
+
+        thread = threading.Thread(target=report, name="inflight-watch", daemon=True)
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            faulthandler.unregister(signal.SIGUSR1)
+            stacks_file.close()
+
+
+INFLIGHT = _Inflight()
+
+
+@contextmanager
+def _logging_judge_calls():
+    """Route every judge call through `INFLIGHT`, labelled with the scorer's name.
+
+    Every MLflow judge reaches its model through `BaseJudgeAdapter.invoke`,
+    whichever adapter serves the model URI (`openrouter:/` is the gateway one).
+    """
+    from mlflow.genai.judges.adapters.base_adapter import BaseJudgeAdapter
+
+    original = BaseJudgeAdapter.invoke
+
+    def invoke(self, input_params):
+        with INFLIGHT.track("judge", input_params.assessment_name or "?"):
+            return original(self, input_params)
+
+    BaseJudgeAdapter.invoke = invoke
+    try:
+        yield
+    finally:
+        BaseJudgeAdapter.invoke = original
 
 
 def _scorers(judge: str, with_reference: bool) -> list:
@@ -119,6 +247,28 @@ def _scorers(judge: str, with_reference: bool) -> list:
 
         scorers += [Correctness(model=judge), RetrievalSufficiency(model=judge)]
     return scorers
+
+
+def _size_mlflow_http_pool() -> None:
+    """Give MLflow's HTTP session one connection per concurrent request.
+
+    `evaluate` logs from up to eval workers x scorer workers threads at once, plus
+    the trace-export workers; with the default pool of 10 the surplus
+    connections are closed after use, each with a "Connection pool is full"
+    warning. MLflow reads the size once, when it creates its cached session on the
+    first request — so this must run before `configure`. An explicit setting wins.
+    """
+    from mlflow.environment_variables import (
+        MLFLOW_ASYNC_TRACE_LOGGING_MAX_WORKERS,
+        MLFLOW_GENAI_EVAL_MAX_SCORER_WORKERS,
+        MLFLOW_GENAI_EVAL_MAX_WORKERS,
+    )
+
+    size = (
+        MLFLOW_GENAI_EVAL_MAX_WORKERS.get() * MLFLOW_GENAI_EVAL_MAX_SCORER_WORKERS.get()
+        + MLFLOW_ASYNC_TRACE_LOGGING_MAX_WORKERS.get()
+    )
+    os.environ.setdefault("MLFLOW_HTTP_POOL_MAXSIZE", str(size))
 
 
 def _warn_about_the_judge(judge: str, agent_model: str) -> None:
@@ -172,18 +322,27 @@ def run_judges(
     # judges and stay silent about retrieval. `settings.mlflow_tracking_uri`
     # is not used here: it falls back to the cluster address when nothing is
     # set, which would make tiers 2 and 3 talk to a server tier 1 ignores.
-    if active():
-        configure(EXPERIMENT)
-
-    agent = RagAgent(settings, params)
-    try:
-        result = mlflow.genai.evaluate(
-            data=build_dataset(entries),
-            predict_fn=_predict_fn(agent),
-            scorers=_scorers(judge, bool(with_reference)),
-        )
-    finally:
-        agent.close()
+    stacks = Path("mlruns") / "agent" / f"stacks-{datetime.now():%Y%m%d-%H%M%S}.txt"
+    stacks.parent.mkdir(parents=True, exist_ok=True)
+    with INFLIGHT.watch(stacks), _logging_judge_calls():
+        if active():
+            _size_mlflow_http_pool()
+            INFLIGHT.progress("connecting to MLflow")
+            configure(EXPERIMENT)
+        INFLIGHT.progress("opening the retriever")
+        retriever = Retriever(settings, params)
+        try:
+            INFLIGHT.progress("evaluate started")
+            result = mlflow.genai.evaluate(
+                data=build_dataset(entries),
+                predict_fn=_predict_fn(
+                    lambda: RagAgent(settings, params, retriever=retriever)
+                ),
+                scorers=_scorers(judge, bool(with_reference)),
+            )
+            INFLIGHT.progress("evaluate finished")
+        finally:
+            retriever.close()
 
     print("\n=== scores ===")
     metrics = getattr(result, "metrics", {}) or {}

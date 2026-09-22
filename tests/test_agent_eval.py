@@ -3,11 +3,13 @@ constructed, never run."""
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 from rag_evaluation.agent_eval import (
     _predict_fn,
     _scorers,
+    _size_mlflow_http_pool,
     _warn_about_the_judge,
     build_dataset,
 )
@@ -69,30 +71,48 @@ class TestWarnAboutTheJudge:
 
 
 class FakeAgent:
-    """Answers with the question and how many turns its memory has seen."""
+    """Answers with the question and how many turns this agent has run."""
 
     def __init__(self):
-        self.seen = 0
-        self.memory = SimpleNamespace(reset=self.reset)
-
-    def reset(self):
-        self.seen = 0
+        self.turns = 0
 
     async def run(self, question):
-        self.seen += 1
+        self.turns += 1
 
         async def handler():
-            return SimpleNamespace(response=f"{question}#{self.seen}")
+            return SimpleNamespace(response=f"{question}#{self.turns}")
 
         return handler()
 
 
 class TestPredictFn:
     def test_returns_the_response_text(self):
-        assert _predict_fn(FakeAgent())("q?") == "q?#1"
+        assert _predict_fn(FakeAgent)("q?") == "q?#1"
 
-    def test_memory_is_reset_between_questions(self):
-        predict = _predict_fn(FakeAgent())
+    def test_every_question_gets_a_fresh_agent(self):
+        made = []
+
+        def new_agent():
+            made.append(FakeAgent())
+            return made[-1]
+
+        predict = _predict_fn(new_agent)
         predict("a?")
-        # without the reset the second question would see turn 2
+        # a shared agent would be on its second turn here
         assert predict("b?") == "b?#1"
+        assert len(made) == 2
+
+
+class TestSizeMlflowHttpPool:
+    def test_covers_every_concurrent_logger(self, monkeypatch):
+        monkeypatch.delenv("MLFLOW_HTTP_POOL_MAXSIZE", raising=False)
+        monkeypatch.setenv("MLFLOW_GENAI_EVAL_MAX_WORKERS", "4")
+        monkeypatch.setenv("MLFLOW_GENAI_EVAL_MAX_SCORER_WORKERS", "8")
+        monkeypatch.setenv("MLFLOW_ASYNC_TRACE_LOGGING_MAX_WORKERS", "10")
+        _size_mlflow_http_pool()
+        assert os.environ["MLFLOW_HTTP_POOL_MAXSIZE"] == "42"
+
+    def test_an_explicit_setting_wins(self, monkeypatch):
+        monkeypatch.setenv("MLFLOW_HTTP_POOL_MAXSIZE", "7")
+        _size_mlflow_http_pool()
+        assert os.environ["MLFLOW_HTTP_POOL_MAXSIZE"] == "7"
