@@ -6,7 +6,7 @@
     "deny": [
       "Read(./.env)",
       "Read(.env)",
-      "Read(/home/sipik/Claude/rag-pipeline/evaluation/.env)"
+      "Read(/home/sipik/Programare/Claude/rag-pipeline/evaluation/.env)"
     ]
   },
   "hooks": {
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"/home/sipik/Claude/rag-pipeline/evaluation/.claude/deny-env-access.py\"",
+            "command": "python3 \"/home/sipik/Programare/Claude/rag-pipeline/evaluation/.claude/deny-env-access.py\"",
             "statusMessage": "Checking for .env access..."
           }
         ]
