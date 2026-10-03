@@ -31,6 +31,7 @@ from rag_config import (
 from rag_evaluation.golden import Entry
 from rag_evaluation.metrics import METRIC_NAMES
 from rag_evaluation.retrieval_eval import Report, run_tier1
+from rag_evaluation.search import _f_score
 from rag_evaluation.sweep import (
     Candidate,
     Scored,
@@ -42,11 +43,15 @@ from rag_evaluation.sweep import (
 )
 
 __all__ = [
+    "CURVE_METRICS",
+    "F_BETAS",
+    "F_NAMES",
     "INGEST_SWEEPABLE",
     "SWEEPABLE",
     "candidates",
     "cast_params",
     "curve_csv",
+    "curve_means",
     "format_table",
     "make_figures",
     "parse_overrides",
@@ -101,6 +106,43 @@ _TYPES = {
     )
     for f in fields(cls)
 }
+
+
+# The F-scores a curve tracks: `search`'s f_score objective, recall favoured,
+# at each of these betas — so a curve and a study put the same number on the
+# same report. Several, because where the knee sits depends on beta; one of
+# them is charted, the rest are columns to read beside it.
+F_BETAS = (3, 4, 5, 6, 10)
+F_NAMES = tuple(f"f{beta}" for beta in F_BETAS)
+PLOTTED_F = "f4"
+
+# What a curve tracks — the table and csv columns and the MLflow metrics — and
+# what it charts: one plot each, and the overview's panels in reading order.
+CURVE_METRICS = (*METRIC_NAMES, *F_NAMES)
+PLOTTED_METRICS = (*METRIC_NAMES, PLOTTED_F)
+OVERVIEW_METRICS = (
+    "recall",
+    "precision",
+    PLOTTED_F,
+    "mrr",
+    "ndcg",
+    "chunk_precision",
+    "hit_rate",
+)
+
+
+def curve_means(report: Report) -> dict[str, float]:
+    """`report.means` plus the F-scores of its recall and precision — from the
+    means, not per question, for the reasons `search._f_score` gives. Empty in,
+    empty out."""
+    means = report.means
+    if not means:
+        return {}
+    recall, precision = means["recall"], means["precision"]
+    return {
+        **means,
+        **{f"f{beta}": _f_score(recall, precision, beta) for beta in F_BETAS},
+    }
 
 
 class CurveError(ValueError):
@@ -280,6 +322,11 @@ def run_curve(
     return results
 
 
+def _width(name: str) -> int:
+    """A table column: the F-scores are narrow so the row still fits a terminal."""
+    return 6 if name in F_NAMES else 10
+
+
 def format_table(rows: Sequence[tuple[Any, Report]], param: str) -> str:
     """The metric means at every value, one row per value."""
     if not rows:
@@ -290,13 +337,13 @@ def format_table(rows: Sequence[tuple[Any, Report]], param: str) -> str:
     lines = [
         f"\n=== {param}: {len(last.scored)} of {len(last.results)} entries scored, "
         f"rerank={'on' if last.rerank else 'off'} ===",
-        f"  {param:>16}  " + "  ".join(f"{n:>10}" for n in METRIC_NAMES),
+        f"  {param:>16}  " + "  ".join(f"{n:>{_width(n)}}" for n in CURVE_METRICS),
     ]
     for value, report in rows:
-        means = report.means
+        means = curve_means(report)
         lines.append(
             f"  {str(value):>16}  "
-            + "  ".join(f"{means[n]:>10.4f}" for n in METRIC_NAMES)
+            + "  ".join(f"{means[n]:>{_width(n)}.4f}" for n in CURVE_METRICS)
         )
     return "\n".join(lines)
 
@@ -321,11 +368,12 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
     # label the ticks with the values.
     numeric = all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in xs)
     positions = xs if numeric else list(range(len(xs)))
+    means = [curve_means(report) for _, report in rows]
 
     def draw(axis, name: str) -> None:
         sns.lineplot(
             x=positions,
-            y=[report.means.get(name, 0.0) for _, report in rows],
+            y=[m.get(name, 0.0) for m in means],
             marker="o",
             ax=axis,
         )
@@ -339,15 +387,17 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
             axis.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     figures: dict[str, Any] = {}
-    for name in METRIC_NAMES:
+    for name in PLOTTED_METRICS:
         fig, axis = plt.subplots(figsize=(6, 4))
         draw(axis, name)
         fig.tight_layout()
         figures[f"plots/{name}_vs_{param}.png"] = fig
 
-    fig, axes = plt.subplots(2, 3, figsize=(16, 8))
-    for axis, name in zip(axes.ravel(), METRIC_NAMES, strict=False):
+    fig, axes = plt.subplots(3, 3, figsize=(16, 12))
+    for axis, name in zip(axes.ravel(), OVERVIEW_METRICS, strict=False):
         draw(axis, name)
+    for axis in axes.ravel()[len(OVERVIEW_METRICS) :]:
+        axis.remove()  # the grid has more slots than there are metrics
     title = f"tier 1 metrics vs {param}"
     fig.suptitle(title if param == "agent.top_k" else f"{title}  (top_k={depth})")
     fig.tight_layout()
@@ -357,14 +407,14 @@ def make_figures(rows: Sequence[tuple[Any, Report]], param: str) -> dict[str, An
 
 def curve_csv(rows: Sequence[tuple[Any, Report]], param: str) -> str:
     """The numbers behind the plots, so a curve can be re-read without them."""
-    header = f"{param}," + ",".join(METRIC_NAMES) + ",scored_entries,coverage"
+    header = f"{param}," + ",".join(CURVE_METRICS) + ",scored_entries,coverage"
     lines = [header]
     for value, report in rows:
-        means = report.means
+        means = curve_means(report)
         coverage = len(report.scored) / len(report.results) if report.results else 0.0
         lines.append(
             f"{value},"
-            + ",".join(f"{means.get(n, 0.0):.6f}" for n in METRIC_NAMES)
+            + ",".join(f"{means.get(n, 0.0):.6f}" for n in CURVE_METRICS)
             + f",{len(report.scored)},{coverage:.4f}"
         )
     return "\n".join(lines) + "\n"

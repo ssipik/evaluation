@@ -461,7 +461,7 @@ def log_curve(
 
         from dataclasses import replace
 
-        from rag_evaluation.curve import curve_csv, make_figures
+        from rag_evaluation.curve import F_NAMES, curve_csv, curve_means, make_figures
 
         configure(experiment)
         values = [value for value, _ in rows]
@@ -483,7 +483,8 @@ def log_curve(
             )
             for i, (value, report) in enumerate(rows):
                 step = int(value) if stepped and not isinstance(value, bool) else i
-                for name, mean in report.means.items():
+                means = curve_means(report)
+                for name, mean in means.items():
                     mlflow.log_metric(name, mean, step=step)
                 child = f"{run_name}-{param}={value}" if run_name else f"{param}={value}"
                 # _log_one_report logs the value under the same `section.field`
@@ -500,6 +501,7 @@ def log_curve(
                         set_param(params, param, value),
                         golden_path,
                     )
+                    mlflow.log_metrics({n: means[n] for n in F_NAMES if n in means})
             mlflow.log_text(curve_csv(rows, param), f"{param}_curve.csv")
             figures = make_figures(rows, param)
             for path, figure in figures.items():

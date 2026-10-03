@@ -19,6 +19,7 @@ from rag_evaluation.curve import (
     parse_values,
     run_curve,
 )
+from rag_evaluation.search import Objective
 
 
 class TestVocabulary:
@@ -126,3 +127,61 @@ class TestReingest:
     def test_a_query_knob_shares_one_freshly_built_collection(self, offline):
         results = run_curve("agent.top_k", [5, 8], [], reingest=True)
         assert len({s.settings.qdrant_collection for s in results}) == 1
+
+
+def _report(*pairs):
+    """A report whose questions score the given (ranking, relevant) pairs."""
+    from rag_evaluation.metrics import score_ranking
+    from rag_evaluation.retrieval_eval import QueryResult, Report
+
+    results = [QueryResult(entry=None, chunks=[], scores=score_ranking(*p)) for p in pairs]
+    return Report(results=results, k=5, rerank=False)
+
+
+class TestFBeta:
+    def test_recall_dominates(self):
+        # precision 1/4, recall 1/2 -> 101 * .125 / (100 * .25 + .5)
+        report = _report((["a", "x", "y", "z"], ["a", "b"]))
+        means = curve.curve_means(report)
+        assert means["f10"] == pytest.approx(12.625 / 25.5)
+        # precision weighs more the smaller beta is
+        assert [n for n in means if n.startswith("f")] == ["f3", "f4", "f5", "f6", "f10"]
+        assert means["f3"] < means["f4"] < means["f5"] < means["f6"] < means["f10"]
+
+    def test_computed_from_the_means_like_the_search_objective(self):
+        # mean precision and recall are both 1/2; a per-question F would too,
+        # but only because one question scores 1 and the other 0
+        report = _report((["a"], ["a"]), (["x"], ["a"]))
+        means = curve.curve_means(report)
+        assert means["f4"] == pytest.approx(0.5)
+        objective = Objective("f_score", ("recall", "precision"), beta=4)
+        assert means["f4"] == pytest.approx(objective.value(report.means))
+
+    def test_nothing_scored_is_empty(self):
+        from rag_evaluation.retrieval_eval import Report
+
+        assert curve.curve_means(Report(results=[], k=5, rerank=False)) == {}
+
+    def test_csv_and_plots_carry_it(self):
+        rows = [(5, _report((["a"], ["a"]))), (8, _report((["a", "x"], ["a"])))]
+        csv = curve.curve_csv(rows, "agent.top_k")
+        assert "chunk_precision,f3,f4,f5,f6,f10,scored_entries" in csv
+        assert "f10" in curve.format_table(rows, "agent.top_k")
+        figures = curve.make_figures(rows, "agent.top_k")
+        # every F-score is a column, one is charted
+        assert [p for p in figures if p.startswith("plots/f")] == [
+            "plots/f4_vs_agent.top_k.png"
+        ]
+        overview = figures["plots/all_metrics_vs_agent.top_k.png"]
+        assert [a.get_ylabel() for a in overview.axes] == [
+            f"{n}@k"
+            for n in (
+                "recall",
+                "precision",
+                "f4",
+                "mrr",
+                "ndcg",
+                "chunk_precision",
+                "hit_rate",
+            )
+        ]
