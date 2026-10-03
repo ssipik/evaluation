@@ -65,7 +65,7 @@ testpaths = ["tests"]
 
 [tool.uv]
 # rag-agent is a path dependency, so uv also reads its [tool.uv.sources], which
-# pins rag-config to the bitbucket repo. That URL and the path source below are
+# pins rag-config to the github repo. That URL and the path source below are
 # two different sources for one package, which uv refuses to resolve. A bare
 # override drops the URL from every requirement for rag-config; the path source
 # then decides where it comes from.
@@ -76,7 +76,7 @@ override-dependencies = ["rag-config"]
 # committed and pushed, or the parameters behind a score cannot be recovered
 # later. Which commit of that branch is recorded in uv.lock — `uv lock` moves
 # it, `uv sync` installs whatever it says.
-rag-config = { git = "https://bitbucket.org/get-capital/config.git", rev = "main" }
+rag-config = { git = "https://github.com/ssipik/config.git", rev = "main" }
 # rag-agent stays a path source: it is the query path under test, and this
 # module is never built into an image, so it reaches its sibling by path the way
 # it already shells out to the stage entrypoints (see stages.py).

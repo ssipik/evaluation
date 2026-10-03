@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [manifest]
-overrides = [{ name = "rag-config", git = "https://bitbucket.org/get-capital/config.git?rev=main" }]
+overrides = [{ name = "rag-config", git = "https://github.com/ssipik/config.git?rev=main" }]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -3695,14 +3695,14 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "qdrant-client", specifier = ">=1.12" },
-    { name = "rag-config", git = "https://bitbucket.org/get-capital/config.git?rev=main" },
+    { name = "rag-config", git = "https://github.com/ssipik/config.git?rev=main" },
 ]
 provides-extras = ["dev", "ui"]
 
 [[package]]
 name = "rag-config"
 version = "0.1.0"
-source = { git = "https://bitbucket.org/get-capital/config.git?rev=main#910955d1b92b738f2d086b70fb5a05b09166e6c1" }
+source = { git = "https://github.com/ssipik/config.git?rev=main#80d99f17cff5cd1af5c2c1e0ef9298588929afae" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -3748,7 +3748,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rag-agent", editable = "../agent" },
-    { name = "rag-config", git = "https://bitbucket.org/get-capital/config.git?rev=main" },
+    { name = "rag-config", git = "https://github.com/ssipik/config.git?rev=main" },
     { name = "seaborn", specifier = ">=0.13" },
     { name = "sqlalchemy", specifier = ">=2.0" },
 ]
