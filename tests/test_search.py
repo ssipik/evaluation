@@ -111,7 +111,7 @@ class TestLoadSearch:
             ),
             (
                 "optuna_f_score",
-                {"type": F_SCORE, "metrics": ["recall", "precision"], "beta": 5.0},
+                {"type": F_SCORE, "metrics": ["recall", "precision"], "beta": 4.0},
             ),
         ],
     )

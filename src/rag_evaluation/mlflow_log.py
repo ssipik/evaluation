@@ -253,6 +253,7 @@ def log_search(
     try:
         import mlflow
 
+        from rag_evaluation.curve import curve_means
         from rag_evaluation.search import best, make_figures, search_csv
 
         configure(experiment)
@@ -293,7 +294,7 @@ def log_search(
                         {f"best.{k}": v for k, v in winner.knobs.items()}
                         | {"best.trial": winner.number}
                     )
-                    mlflow.log_metrics(winner.report.means)
+                    mlflow.log_metrics(curve_means(winner.report))
             wall = float(study.user_attrs.get("wall_seconds", 0.0))
             if wall:
                 mlflow.log_metric("wall_seconds", wall)
@@ -301,9 +302,10 @@ def log_search(
             csv = search_csv(results)
             mlflow.log_text(csv, "trials.csv")
             figures = make_figures(study)
-            for path, figure in figures.items():
-                mlflow.log_figure(figure, path)
+            # Disk first: the local copy must not depend on the upload.
             _save_search_locally(csv, run_name, parent.info.run_id, figures)
+            for path, figure in figures.items():
+                _log_figure(figure, path)
             _close_figures(figures.values())
     except Exception as exc:
         # The type, not only the message: a NameError here is a bug in this
@@ -415,9 +417,13 @@ def _log_one_report(
     report, into whichever run is active."""
     import mlflow
 
+    from rag_evaluation.curve import curve_means
+
     _log_golden_dataset(report, golden_path, context)
     mlflow.log_params(_params(settings, params))
-    mlflow.log_metrics(report.means)
+    # With the F-scores, on every run a report lands in — a curve's value, a
+    # study's trial, a sweep's candidate — so they are comparable across all.
+    mlflow.log_metrics(curve_means(report))
     # Coverage is a metric, not a footnote: it says how much of the set the
     # means are actually over.
     mlflow.log_metrics(
@@ -461,7 +467,7 @@ def log_curve(
 
         from dataclasses import replace
 
-        from rag_evaluation.curve import F_NAMES, curve_csv, curve_means, make_figures
+        from rag_evaluation.curve import curve_csv, curve_means, make_figures
 
         configure(experiment)
         values = [value for value, _ in rows]
@@ -501,12 +507,11 @@ def log_curve(
                         set_param(params, param, value),
                         golden_path,
                     )
-                    mlflow.log_metrics({n: means[n] for n in F_NAMES if n in means})
             mlflow.log_text(curve_csv(rows, param), f"{param}_curve.csv")
             figures = make_figures(rows, param)
-            for path, figure in figures.items():
-                mlflow.log_figure(figure, path)
             _save_locally(rows, param, run_name, parent.info.run_id, figures)
+            for path, figure in figures.items():
+                _log_figure(figure, path)
             _close_figures(figures.values())
     except Exception as exc:
         log.warning("MLflow logging failed, scores are still above: %s", exc)
@@ -532,6 +537,26 @@ def _save_locally(rows, param: str, run_name: str | None, run_id: str, figures) 
         print(f"  saved to {out}", file=sys.stderr)
     except OSError as exc:
         log.warning("could not write %s: %s", out, exc)
+
+
+def _log_figure(figure, path: str) -> None:
+    """Upload one chart, and never let it take the rest of the run with it.
+
+    The proxy in front of the tracking server caps a request body, and a
+    contour grid over a thousand trials is past it (413). Such a figure is sent
+    again at half the resolution, then given up on — it is on disk either way.
+    """
+    import mlflow
+
+    try:
+        mlflow.log_figure(figure, path)
+        return
+    except Exception as exc:
+        log.info("%s refused (%s), retrying smaller", path, exc)
+    try:
+        mlflow.log_figure(figure, path, save_kwargs={"dpi": 50})
+    except Exception as exc:
+        log.warning("could not upload %s, the local copy stands: %s", path, exc)
 
 
 def _close_figures(figures) -> None:

@@ -145,8 +145,9 @@ class TestFBeta:
         means = curve.curve_means(report)
         assert means["f10"] == pytest.approx(12.625 / 25.5)
         # precision weighs more the smaller beta is
-        assert [n for n in means if n.startswith("f")] == ["f3", "f4", "f5", "f6", "f10"]
-        assert means["f3"] < means["f4"] < means["f5"] < means["f6"] < means["f10"]
+        assert [n for n in means if n.startswith("f")] == [f"f{b}" for b in range(3, 11)]
+        values = [means[f"f{b}"] for b in range(3, 11)]
+        assert values == sorted(values) and len(set(values)) == len(values)
 
     def test_computed_from_the_means_like_the_search_objective(self):
         # mean precision and recall are both 1/2; a per-question F would too,
@@ -165,7 +166,7 @@ class TestFBeta:
     def test_csv_and_plots_carry_it(self):
         rows = [(5, _report((["a"], ["a"]))), (8, _report((["a", "x"], ["a"])))]
         csv = curve.curve_csv(rows, "agent.top_k")
-        assert "chunk_precision,f3,f4,f5,f6,f10,scored_entries" in csv
+        assert "chunk_precision,f3,f4,f5,f6,f7,f8,f9,f10,scored_entries" in csv
         assert "f10" in curve.format_table(rows, "agent.top_k")
         figures = curve.make_figures(rows, "agent.top_k")
         # every F-score is a column, one is charted

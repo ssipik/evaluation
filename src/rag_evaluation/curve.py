@@ -112,7 +112,7 @@ _TYPES = {
 # at each of these betas — so a curve and a study put the same number on the
 # same report. Several, because where the knee sits depends on beta; one of
 # them is charted, the rest are columns to read beside it.
-F_BETAS = (3, 4, 5, 6, 10)
+F_BETAS = (3, 4, 5, 6, 7, 8, 9, 10)
 F_NAMES = tuple(f"f{beta}" for beta in F_BETAS)
 PLOTTED_F = "f4"
 

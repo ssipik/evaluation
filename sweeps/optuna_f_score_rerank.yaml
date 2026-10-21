@@ -30,4 +30,4 @@ search:
 objective:
   type: f_score
   metrics: [recall, precision]
-  beta: 10.0
+  beta: 4.0

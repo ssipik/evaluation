@@ -3702,7 +3702,7 @@ provides-extras = ["dev", "ui"]
 [[package]]
 name = "rag-config"
 version = "0.1.0"
-source = { git = "https://github.com/ssipik/config.git?rev=main#80d99f17cff5cd1af5c2c1e0ef9298588929afae" }
+source = { git = "https://github.com/ssipik/config.git?rev=main#4652cdcc13c4441558ef9953a07c21b504e2180b" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },

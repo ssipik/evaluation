@@ -103,7 +103,9 @@
                 "--file", "sweeps/optuna_f_score.yaml",
                 "--trials", "1000",
                 "--seed", "42",
-                "--study", "optuna_f4_score"
+                "--study", "optuna_f10_score"
+                // "--file", "sweeps/optuna_f_score.yaml",
+                // "--study", "optuna_f4_score"
             ],
         },
         {
