@@ -146,11 +146,11 @@ fingerprint; `test` never builds one — `sweep` or `curve` with `--reingest` do
 
 ## Tiers 2 and 3 — the judge scorers
 
-Needs `OPENROUTER_API_KEY`. Runs the real agent, so it costs time and money.
+Needs `ANTHROPIC_API_KEY`. Runs the real agent, so it costs time and money.
 
 ```bash
 .venv/bin/python -m rag_evaluation agent --ids isin-lookup
-.venv/bin/python -m rag_evaluation agent --judge-model openrouter:/openai/gpt-5.4
+.venv/bin/python -m rag_evaluation agent --judge-model anthropic:/claude-haiku-4-5
 ```
 
 The judge is a different family from the agent *and* stronger; the harness warns
